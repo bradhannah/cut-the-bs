@@ -244,8 +244,311 @@ export async function deleteProfileLink(id: number): Promise<void> {
   addToast("success", "Link deleted");
 }
 
-export async function reorderProfileLinks(
+export async function reorderProfileLinks(orderedIDs: number[]): Promise<void> {
+  await call<void>("ReorderProfileLinks", orderedIDs);
+}
+
+// --- Skill Types ---
+
+export interface SkillInput {
+  name: string;
+  category_id: number;
+  competence_level: number;
+  is_legacy: boolean;
+}
+
+export interface Skill {
+  id: number;
+  name: string;
+  category_id: number;
+  competence_level: number;
+  is_legacy: boolean;
+}
+
+export interface SkillCategory {
+  id: number;
+  name: string;
+  sort_order: number;
+}
+
+export interface SkillCategoryWithSkills {
+  category: SkillCategory;
+  skills: Skill[];
+}
+
+export interface CompetenceLevel {
+  level: number;
+  label: string;
+  description: string;
+}
+
+// --- Skills API ---
+
+export async function listSkills(): Promise<Skill[]> {
+  return call<Skill[]>("ListSkills");
+}
+
+export async function listSkillsByCategory(): Promise<
+  SkillCategoryWithSkills[]
+> {
+  return call<SkillCategoryWithSkills[]>("ListSkillsByCategory");
+}
+
+export async function createSkill(input: SkillInput): Promise<Skill> {
+  const result = await call<Skill>("CreateSkill", input);
+  addToast("success", "Skill created");
+  return result;
+}
+
+export async function updateSkill(
+  id: number,
+  input: SkillInput
+): Promise<Skill> {
+  const result = await call<Skill>("UpdateSkill", id, input);
+  addToast("success", "Skill updated");
+  return result;
+}
+
+export async function deleteSkill(id: number): Promise<void> {
+  await call<void>("DeleteSkill", id);
+  addToast("success", "Skill deleted");
+}
+
+export async function checkSkillLensReferences(id: number): Promise<string[]> {
+  return call<string[]>("CheckSkillLensReferences", id);
+}
+
+export async function splitSkillsText(text: string): Promise<string[]> {
+  return call<string[]>("SplitSkillsText", text);
+}
+
+export async function getCompetenceLevels(): Promise<CompetenceLevel[]> {
+  return call<CompetenceLevel[]>("GetCompetenceLevels");
+}
+
+// --- Skill Categories API ---
+
+export async function listSkillCategories(): Promise<SkillCategory[]> {
+  return call<SkillCategory[]>("ListSkillCategories");
+}
+
+export async function createSkillCategory(
+  name: string
+): Promise<SkillCategory> {
+  const result = await call<SkillCategory>("CreateSkillCategory", name);
+  addToast("success", "Category created");
+  return result;
+}
+
+export async function renameSkillCategory(
+  id: number,
+  name: string
+): Promise<SkillCategory> {
+  const result = await call<SkillCategory>("RenameSkillCategory", id, name);
+  addToast("success", "Category renamed");
+  return result;
+}
+
+export async function deleteSkillCategory(id: number): Promise<void> {
+  await call<void>("DeleteSkillCategory", id);
+  addToast("success", "Category deleted");
+}
+
+export async function reorderSkillCategories(
   orderedIDs: number[]
 ): Promise<void> {
-  await call<void>("ReorderProfileLinks", orderedIDs);
+  await call<void>("ReorderSkillCategories", orderedIDs);
+}
+
+// --- Academic Types ---
+
+export interface AcademicInput {
+  institution: string;
+  credential_type: string;
+  field_of_study: string;
+  completion_date: string;
+  date_granularity: string;
+}
+
+export interface AcademicCredential {
+  id: number;
+  institution: string;
+  credential_type: string;
+  field_of_study: string;
+  completion_date: string;
+  date_granularity: string;
+  sort_order: number;
+}
+
+// --- Academic API ---
+
+export async function listAcademicCredentials(): Promise<AcademicCredential[]> {
+  return call<AcademicCredential[]>("ListAcademicCredentials");
+}
+
+export async function createAcademicCredential(
+  input: AcademicInput
+): Promise<AcademicCredential> {
+  const result = await call<AcademicCredential>(
+    "CreateAcademicCredential",
+    input
+  );
+  addToast("success", "Academic credential created");
+  return result;
+}
+
+export async function updateAcademicCredential(
+  id: number,
+  input: AcademicInput
+): Promise<AcademicCredential> {
+  const result = await call<AcademicCredential>(
+    "UpdateAcademicCredential",
+    id,
+    input
+  );
+  addToast("success", "Academic credential updated");
+  return result;
+}
+
+export async function deleteAcademicCredential(id: number): Promise<void> {
+  await call<void>("DeleteAcademicCredential", id);
+  addToast("success", "Academic credential deleted");
+}
+
+export async function reorderAcademicCredentials(
+  orderedIDs: number[]
+): Promise<void> {
+  await call<void>("ReorderAcademicCredentials", orderedIDs);
+}
+
+// --- Certification Types ---
+
+export interface CertificationInput {
+  name: string;
+  issuing_body: string;
+  date_earned: string;
+  expiration_date: string;
+}
+
+export interface Certification {
+  id: number;
+  name: string;
+  issuing_body: string;
+  date_earned: string;
+  expiration_date: string;
+  is_active: boolean;
+  sort_order: number;
+}
+
+// --- Certification API ---
+
+export async function listCertifications(): Promise<Certification[]> {
+  return call<Certification[]>("ListCertifications");
+}
+
+export async function createCertification(
+  input: CertificationInput
+): Promise<Certification> {
+  const result = await call<Certification>("CreateCertification", input);
+  addToast("success", "Certification created");
+  return result;
+}
+
+export async function updateCertification(
+  id: number,
+  input: CertificationInput
+): Promise<Certification> {
+  const result = await call<Certification>("UpdateCertification", id, input);
+  addToast("success", "Certification updated");
+  return result;
+}
+
+export async function deleteCertification(id: number): Promise<void> {
+  await call<void>("DeleteCertification", id);
+  addToast("success", "Certification deleted");
+}
+
+export async function reorderCertifications(
+  orderedIDs: number[]
+): Promise<void> {
+  await call<void>("ReorderCertifications", orderedIDs);
+}
+
+// --- Summary Types ---
+
+export interface SummaryInput {
+  label: string;
+  body_text: string;
+}
+
+export interface ProfessionalSummary {
+  id: number;
+  label: string;
+  body_text: string;
+}
+
+// --- Summary API ---
+
+export async function listSummaries(): Promise<ProfessionalSummary[]> {
+  return call<ProfessionalSummary[]>("ListSummaries");
+}
+
+export async function createSummary(
+  input: SummaryInput
+): Promise<ProfessionalSummary> {
+  const result = await call<ProfessionalSummary>("CreateSummary", input);
+  addToast("success", "Summary created");
+  return result;
+}
+
+export async function updateSummary(
+  id: number,
+  input: SummaryInput
+): Promise<ProfessionalSummary> {
+  const result = await call<ProfessionalSummary>("UpdateSummary", id, input);
+  addToast("success", "Summary updated");
+  return result;
+}
+
+export async function deleteSummary(id: number): Promise<void> {
+  await call<void>("DeleteSummary", id);
+  addToast("success", "Summary deleted");
+}
+
+// --- Descriptor Types ---
+
+export interface RoleDescriptor {
+  id: number;
+  title: string;
+  sort_order: number;
+}
+
+// --- Descriptor API ---
+
+export async function listDescriptors(): Promise<RoleDescriptor[]> {
+  return call<RoleDescriptor[]>("ListDescriptors");
+}
+
+export async function createDescriptor(title: string): Promise<RoleDescriptor> {
+  const result = await call<RoleDescriptor>("CreateDescriptor", title);
+  addToast("success", "Descriptor created");
+  return result;
+}
+
+export async function updateDescriptor(
+  id: number,
+  title: string
+): Promise<RoleDescriptor> {
+  const result = await call<RoleDescriptor>("UpdateDescriptor", id, title);
+  addToast("success", "Descriptor updated");
+  return result;
+}
+
+export async function deleteDescriptor(id: number): Promise<void> {
+  await call<void>("DeleteDescriptor", id);
+  addToast("success", "Descriptor deleted");
+}
+
+export async function reorderDescriptors(orderedIDs: number[]): Promise<void> {
+  await call<void>("ReorderDescriptors", orderedIDs);
 }

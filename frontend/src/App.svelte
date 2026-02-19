@@ -2,6 +2,10 @@
   import Router, { link } from "svelte-spa-router";
   import active from "svelte-spa-router/active";
   import WorkHistory from "./pages/WorkHistory.svelte";
+  import Skills from "./pages/Skills.svelte";
+  import Education from "./pages/Education.svelte";
+  import Summaries from "./pages/Summaries.svelte";
+  import Descriptors from "./pages/Descriptors.svelte";
   import Settings from "./pages/Settings.svelte";
   import Placeholder from "./pages/Placeholder.svelte";
   import Toast from "./components/Toast.svelte";
@@ -9,11 +13,10 @@
   const routes = {
     "/": WorkHistory,
     "/work-history": WorkHistory,
-    "/skills": Placeholder,
-    "/education": Placeholder,
-    "/certifications": Placeholder,
-    "/summaries": Placeholder,
-    "/descriptors": Placeholder,
+    "/skills": Skills,
+    "/education": Education,
+    "/summaries": Summaries,
+    "/descriptors": Descriptors,
     "/lenses": Placeholder,
     "/export": Placeholder,
     "/cover-letters": Placeholder,
@@ -30,7 +33,6 @@
     { path: "/work-history", label: "Work History" },
     { path: "/skills", label: "Skills" },
     { path: "/education", label: "Education" },
-    { path: "/certifications", label: "Certifications" },
     { path: "/summaries", label: "Summaries" },
     { path: "/descriptors", label: "Role Descriptors" },
     { path: "/lenses", label: "Lenses" },

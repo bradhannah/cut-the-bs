@@ -155,7 +155,9 @@
 
 <div class="settings-page">
   <h2>Settings</h2>
-  <p class="page-description">Your profile information for resumes and cover letters.</p>
+  <p class="page-description">
+    Your profile information for resumes and cover letters.
+  </p>
 
   <!-- Profile Section -->
   <section class="section">
@@ -281,7 +283,9 @@
     {:else if sortedLinks.length === 0}
       <div class="empty-state">
         <p>No profile links yet.</p>
-        <p class="empty-hint">Add links like LinkedIn, GitHub, or your portfolio.</p>
+        <p class="empty-hint">
+          Add links like LinkedIn, GitHub, or your portfolio.
+        </p>
       </div>
     {:else}
       <div class="links-list">

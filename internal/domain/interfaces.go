@@ -152,6 +152,10 @@ type Store interface {
 	// DeleteAcademicCredential deletes an academic record by ID.
 	DeleteAcademicCredential(ctx context.Context, id int64) error
 
+	// ReorderAcademicCredentials updates sort_order for all
+	// academic credentials.
+	ReorderAcademicCredentials(ctx context.Context, orderedIDs []int64) error
+
 	// --- Certifications ---
 
 	// ListCertifications returns all certifications with computed
@@ -166,6 +170,10 @@ type Store interface {
 
 	// DeleteCertification deletes a certification by ID.
 	DeleteCertification(ctx context.Context, id int64) error
+
+	// ReorderCertifications updates sort_order for all
+	// certifications.
+	ReorderCertifications(ctx context.Context, orderedIDs []int64) error
 
 	// --- Professional Summaries ---
 
