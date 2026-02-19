@@ -78,6 +78,20 @@ func (c *Config) DBPath() (string, error) {
 	return filepath.Join(dir, DefaultDBName), nil
 }
 
+// ExportDir returns the full path to the PDF export directory,
+// creating it if needed.
+func (c *Config) ExportDir() (string, error) {
+	dir, err := c.ResolveDataDir()
+	if err != nil {
+		return "", err
+	}
+	exportDir := filepath.Join(dir, "exports")
+	if err := os.MkdirAll(exportDir, 0o755); err != nil {
+		return "", fmt.Errorf("config: unable to create export directory: %w", err)
+	}
+	return exportDir, nil
+}
+
 // EnsureDataDir creates the data directory if it does not exist.
 func (c *Config) EnsureDataDir() error {
 	dir, err := c.ResolveDataDir()

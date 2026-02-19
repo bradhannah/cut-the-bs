@@ -4,10 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 
 	"cut-the-bs/internal/config"
 	"cut-the-bs/internal/domain"
 	"cut-the-bs/internal/infra"
+	"cut-the-bs/internal/infra/pdf"
 	"cut-the-bs/internal/infra/sqlite"
 	"cut-the-bs/internal/service"
 )
@@ -28,6 +32,7 @@ type App struct {
 	academicSvc    *service.AcademicService
 	summarySvc     *service.SummaryService
 	descriptorSvc  *service.DescriptorService
+	resumeSvc      *service.ResumeService
 }
 
 // NewApp creates a new App instance. Service dependencies are
@@ -94,6 +99,16 @@ func (a *App) startup(ctx context.Context) {
 	a.academicSvc = service.NewAcademicService(store)
 	a.summarySvc = service.NewSummaryService(store)
 	a.descriptorSvc = service.NewDescriptorService(store)
+
+	// PDF renderer and export service.
+	renderer := pdf.NewRenderer()
+	exportDir, err := a.cfg.ExportDir()
+	if err != nil {
+		log.Error("failed to resolve export directory",
+			slog.String("error", err.Error()))
+		return
+	}
+	a.resumeSvc = service.NewResumeService(store, renderer, exportDir)
 
 	log.Info("application started",
 		slog.String("db_path", dbPath))
@@ -435,4 +450,60 @@ func (a *App) DeleteDescriptor(id int64) error {
 // ReorderDescriptors updates sort_order for all descriptors.
 func (a *App) ReorderDescriptors(orderedIDs []int64) error {
 	return a.descriptorSvc.ReorderDescriptors(a.ctx, orderedIDs)
+}
+
+// =================================================================
+// Resume Export Bindings
+// =================================================================
+
+// ListTemplates returns the available built-in resume templates.
+func (a *App) ListTemplates() []domain.ResumeTemplate {
+	return a.resumeSvc.ListTemplates()
+}
+
+// PreviewExport generates a resume PDF with the given selections
+// without creating an export record. Returns the file path.
+func (a *App) PreviewExport(req domain.ExportRequest) (string, error) {
+	return a.resumeSvc.PreviewExport(a.ctx, req)
+}
+
+// CreateExport generates a PDF resume, saves it, and creates an
+// export record with a snapshot of the selections used.
+func (a *App) CreateExport(req domain.ExportRequest) (domain.ResumeExport, error) {
+	return a.resumeSvc.CreateExport(a.ctx, req)
+}
+
+// ListExports returns all previous export records.
+func (a *App) ListExports() ([]domain.ResumeExport, error) {
+	return a.resumeSvc.ListExports(a.ctx)
+}
+
+// OpenExportFile opens the PDF file for an export in the system's
+// default viewer.
+func (a *App) OpenExportFile(exportID int64) error {
+	export, err := a.resumeSvc.GetExport(a.ctx, exportID)
+	if err != nil {
+		return fmt.Errorf("get export: %w", err)
+	}
+
+	absPath, err := filepath.Abs(export.FilePath)
+	if err != nil {
+		return fmt.Errorf("resolve path: %w", err)
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", absPath)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", "", absPath)
+	default: // linux and others
+		cmd = exec.Command("xdg-open", absPath)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("open file: %w", err)
+	}
+
+	return nil
 }

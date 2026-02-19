@@ -6,6 +6,7 @@
   import Education from "./pages/Education.svelte";
   import Summaries from "./pages/Summaries.svelte";
   import Descriptors from "./pages/Descriptors.svelte";
+  import Export from "./pages/Export.svelte";
   import Settings from "./pages/Settings.svelte";
   import Placeholder from "./pages/Placeholder.svelte";
   import Toast from "./components/Toast.svelte";
@@ -18,7 +19,7 @@
     "/summaries": Summaries,
     "/descriptors": Descriptors,
     "/lenses": Placeholder,
-    "/export": Placeholder,
+    "/export": Export,
     "/cover-letters": Placeholder,
     "/applications": Placeholder,
     "/settings": Settings,

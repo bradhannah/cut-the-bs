@@ -552,3 +552,60 @@ export async function deleteDescriptor(id: number): Promise<void> {
 export async function reorderDescriptors(orderedIDs: number[]): Promise<void> {
   await call<void>("ReorderDescriptors", orderedIDs);
 }
+
+// --- Resume Export Types ---
+
+export interface ResumeTemplate {
+  id: string;
+  name: string;
+  description: string;
+  preview_url: string;
+}
+
+export interface ExportRequest {
+  template_id: string;
+  lens_id?: number | null;
+  summary_id?: number | null;
+  work_history_ids: number[];
+  bullet_ids: number[];
+  skill_ids: number[];
+  skill_sort_overrides: Record<number, number>;
+  academic_ids: number[];
+  certification_ids: number[];
+  descriptor_ids: number[];
+}
+
+export interface ResumeExport {
+  id: number;
+  template_id: string;
+  file_path: string;
+  summary_id: number | null;
+  lens_id: number | null;
+  generated_at: string;
+}
+
+// --- Resume Export API ---
+
+export async function listTemplates(): Promise<ResumeTemplate[]> {
+  return call<ResumeTemplate[]>("ListTemplates");
+}
+
+export async function previewExport(req: ExportRequest): Promise<string> {
+  return call<string>("PreviewExport", req);
+}
+
+export async function createExport(
+  req: ExportRequest
+): Promise<ResumeExport> {
+  const result = await call<ResumeExport>("CreateExport", req);
+  addToast("success", "Resume exported successfully");
+  return result;
+}
+
+export async function listExports(): Promise<ResumeExport[]> {
+  return call<ResumeExport[]>("ListExports");
+}
+
+export async function openExportFile(exportID: number): Promise<void> {
+  await call<void>("OpenExportFile", exportID);
+}
