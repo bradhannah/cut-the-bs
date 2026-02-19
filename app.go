@@ -23,6 +23,7 @@ type App struct {
 
 	// Services
 	workHistorySvc *service.WorkHistoryService
+	profileSvc     *service.ProfileService
 }
 
 // NewApp creates a new App instance. Service dependencies are
@@ -84,6 +85,7 @@ func (a *App) startup(ctx context.Context) {
 
 	// Initialize services.
 	a.workHistorySvc = service.NewWorkHistoryService(store)
+	a.profileSvc = service.NewProfileService(store)
 
 	log.Info("application started",
 		slog.String("db_path", dbPath))
@@ -186,4 +188,49 @@ func (a *App) ReorderBullets(workHistoryID int64, orderedIDs []int64) error {
 // lines for preview before creating bullets.
 func (a *App) SplitBulletText(text string) []string {
 	return a.workHistorySvc.SplitBulletText(text)
+}
+
+// =================================================================
+// Profile Bindings
+// =================================================================
+
+// GetProfile returns the user's profile. Creates a default empty
+// profile if none exists.
+func (a *App) GetProfile() (domain.UserProfile, error) {
+	return a.profileSvc.GetProfile(a.ctx)
+}
+
+// UpdateProfile updates the user's profile fields.
+// Returns the updated profile.
+func (a *App) UpdateProfile(profile domain.UserProfile) (domain.UserProfile, error) {
+	return a.profileSvc.UpdateProfile(a.ctx, profile)
+}
+
+// =================================================================
+// Profile Link Bindings
+// =================================================================
+
+// ListProfileLinks returns all profile links ordered by sort_order.
+func (a *App) ListProfileLinks() ([]domain.ProfileLink, error) {
+	return a.profileSvc.ListProfileLinks(a.ctx)
+}
+
+// CreateProfileLink creates a new profile link.
+func (a *App) CreateProfileLink(input domain.ProfileLinkInput) (domain.ProfileLink, error) {
+	return a.profileSvc.CreateProfileLink(a.ctx, input)
+}
+
+// UpdateProfileLink updates an existing profile link.
+func (a *App) UpdateProfileLink(id int64, input domain.ProfileLinkInput) (domain.ProfileLink, error) {
+	return a.profileSvc.UpdateProfileLink(a.ctx, id, input)
+}
+
+// DeleteProfileLink deletes a profile link.
+func (a *App) DeleteProfileLink(id int64) error {
+	return a.profileSvc.DeleteProfileLink(a.ctx, id)
+}
+
+// ReorderProfileLinks updates the sort_order of all profile links.
+func (a *App) ReorderProfileLinks(orderedIDs []int64) error {
+	return a.profileSvc.ReorderProfileLinks(a.ctx, orderedIDs)
 }

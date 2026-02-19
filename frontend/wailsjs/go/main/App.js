@@ -6,6 +6,10 @@ export function CreateBullet(arg1, arg2) {
   return window['go']['main']['App']['CreateBullet'](arg1, arg2);
 }
 
+export function CreateProfileLink(arg1) {
+  return window['go']['main']['App']['CreateProfileLink'](arg1);
+}
+
 export function CreateWorkHistory(arg1) {
   return window['go']['main']['App']['CreateWorkHistory'](arg1);
 }
@@ -14,8 +18,16 @@ export function DeleteBullet(arg1) {
   return window['go']['main']['App']['DeleteBullet'](arg1);
 }
 
+export function DeleteProfileLink(arg1) {
+  return window['go']['main']['App']['DeleteProfileLink'](arg1);
+}
+
 export function DeleteWorkHistory(arg1) {
   return window['go']['main']['App']['DeleteWorkHistory'](arg1);
+}
+
+export function GetProfile() {
+  return window['go']['main']['App']['GetProfile']();
 }
 
 export function GetWorkHistory(arg1) {
@@ -26,12 +38,20 @@ export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }
 
+export function ListProfileLinks() {
+  return window['go']['main']['App']['ListProfileLinks']();
+}
+
 export function ListWorkHistory() {
   return window['go']['main']['App']['ListWorkHistory']();
 }
 
 export function ReorderBullets(arg1, arg2) {
   return window['go']['main']['App']['ReorderBullets'](arg1, arg2);
+}
+
+export function ReorderProfileLinks(arg1) {
+  return window['go']['main']['App']['ReorderProfileLinks'](arg1);
 }
 
 export function ReorderWorkHistory(arg1) {
@@ -44,6 +64,14 @@ export function SplitBulletText(arg1) {
 
 export function UpdateBullet(arg1, arg2) {
   return window['go']['main']['App']['UpdateBullet'](arg1, arg2);
+}
+
+export function UpdateProfile(arg1) {
+  return window['go']['main']['App']['UpdateProfile'](arg1);
+}
+
+export function UpdateProfileLink(arg1, arg2) {
+  return window['go']['main']['App']['UpdateProfileLink'](arg1, arg2);
 }
 
 export function UpdateWorkHistory(arg1, arg2) {

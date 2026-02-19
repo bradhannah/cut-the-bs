@@ -38,6 +38,28 @@ export interface AchievementBullet {
   updated_at: string;
 }
 
+// --- Profile Types ---
+
+export interface UserProfile {
+  id: number;
+  full_name: string;
+  email: string;
+  phone: string;
+  location: string;
+}
+
+export interface ProfileLink {
+  id: number;
+  label: string;
+  url: string;
+  sort_order: number;
+}
+
+export interface ProfileLinkInput {
+  label: string;
+  url: string;
+}
+
 // Toast notification support
 export type ToastLevel = "info" | "success" | "error";
 
@@ -178,4 +200,52 @@ export async function reorderBullets(
 
 export async function splitBulletText(text: string): Promise<string[]> {
   return call<string[]>("SplitBulletText", text);
+}
+
+// --- Profile API ---
+
+export async function getProfile(): Promise<UserProfile> {
+  return call<UserProfile>("GetProfile");
+}
+
+export async function updateProfile(
+  profile: UserProfile
+): Promise<UserProfile> {
+  const result = await call<UserProfile>("UpdateProfile", profile);
+  addToast("success", "Profile updated");
+  return result;
+}
+
+// --- Profile Links API ---
+
+export async function listProfileLinks(): Promise<ProfileLink[]> {
+  return call<ProfileLink[]>("ListProfileLinks");
+}
+
+export async function createProfileLink(
+  input: ProfileLinkInput
+): Promise<ProfileLink> {
+  const result = await call<ProfileLink>("CreateProfileLink", input);
+  addToast("success", "Link added");
+  return result;
+}
+
+export async function updateProfileLink(
+  id: number,
+  input: ProfileLinkInput
+): Promise<ProfileLink> {
+  const result = await call<ProfileLink>("UpdateProfileLink", id, input);
+  addToast("success", "Link updated");
+  return result;
+}
+
+export async function deleteProfileLink(id: number): Promise<void> {
+  await call<void>("DeleteProfileLink", id);
+  addToast("success", "Link deleted");
+}
+
+export async function reorderProfileLinks(
+  orderedIDs: number[]
+): Promise<void> {
+  await call<void>("ReorderProfileLinks", orderedIDs);
 }

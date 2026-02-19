@@ -2,6 +2,7 @@
   import Router, { link } from "svelte-spa-router";
   import active from "svelte-spa-router/active";
   import WorkHistory from "./pages/WorkHistory.svelte";
+  import Settings from "./pages/Settings.svelte";
   import Placeholder from "./pages/Placeholder.svelte";
   import Toast from "./components/Toast.svelte";
 
@@ -17,7 +18,7 @@
     "/export": Placeholder,
     "/cover-letters": Placeholder,
     "/applications": Placeholder,
-    "/settings": Placeholder,
+    "/settings": Settings,
   };
 
   interface NavItem {

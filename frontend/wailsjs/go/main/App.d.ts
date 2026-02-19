@@ -4,24 +4,38 @@ import {domain} from '../models';
 
 export function CreateBullet(arg1:number,arg2:string):Promise<domain.AchievementBullet>;
 
+export function CreateProfileLink(arg1:domain.ProfileLinkInput):Promise<domain.ProfileLink>;
+
 export function CreateWorkHistory(arg1:domain.WorkHistoryInput):Promise<domain.WorkHistoryEntry>;
 
 export function DeleteBullet(arg1:number):Promise<void>;
 
+export function DeleteProfileLink(arg1:number):Promise<void>;
+
 export function DeleteWorkHistory(arg1:number):Promise<void>;
+
+export function GetProfile():Promise<domain.UserProfile>;
 
 export function GetWorkHistory(arg1:number):Promise<domain.WorkHistoryEntry>;
 
 export function Greet(arg1:string):Promise<string>;
 
+export function ListProfileLinks():Promise<Array<domain.ProfileLink>>;
+
 export function ListWorkHistory():Promise<Array<domain.WorkHistoryEntry>>;
 
 export function ReorderBullets(arg1:number,arg2:Array<number>):Promise<void>;
+
+export function ReorderProfileLinks(arg1:Array<number>):Promise<void>;
 
 export function ReorderWorkHistory(arg1:Array<number>):Promise<void>;
 
 export function SplitBulletText(arg1:string):Promise<Array<string>>;
 
 export function UpdateBullet(arg1:number,arg2:string):Promise<domain.AchievementBullet>;
+
+export function UpdateProfile(arg1:domain.UserProfile):Promise<domain.UserProfile>;
+
+export function UpdateProfileLink(arg1:number,arg2:domain.ProfileLinkInput):Promise<domain.ProfileLink>;
 
 export function UpdateWorkHistory(arg1:number,arg2:domain.WorkHistoryInput):Promise<domain.WorkHistoryEntry>;

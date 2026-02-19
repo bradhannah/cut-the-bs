@@ -22,6 +22,66 @@ export namespace domain {
 	        this.updated_at = source["updated_at"];
 	    }
 	}
+	export class ProfileLink {
+	    id: number;
+	    label: string;
+	    url: string;
+	    sort_order: number;
+	    created_at: string;
+	    updated_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProfileLink(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.label = source["label"];
+	        this.url = source["url"];
+	        this.sort_order = source["sort_order"];
+	        this.created_at = source["created_at"];
+	        this.updated_at = source["updated_at"];
+	    }
+	}
+	export class ProfileLinkInput {
+	    label: string;
+	    url: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProfileLinkInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.url = source["url"];
+	    }
+	}
+	export class UserProfile {
+	    id: number;
+	    full_name: string;
+	    email: string;
+	    phone: string;
+	    location: string;
+	    created_at: string;
+	    updated_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UserProfile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.full_name = source["full_name"];
+	        this.email = source["email"];
+	        this.phone = source["phone"];
+	        this.location = source["location"];
+	        this.created_at = source["created_at"];
+	        this.updated_at = source["updated_at"];
+	    }
+	}
 	export class WorkHistoryEntry {
 	    id: number;
 	    employer_name: string;
