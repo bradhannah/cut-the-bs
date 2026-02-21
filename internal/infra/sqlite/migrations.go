@@ -6,7 +6,7 @@ import (
 )
 
 // currentVersion is the latest schema version.
-const currentVersion = 6
+const currentVersion = 7
 
 // Migrate applies all pending schema migrations to the database.
 // It reads PRAGMA user_version to determine the current schema version
@@ -37,6 +37,7 @@ func Migrate(store *Store) error {
 		migrateV4,
 		migrateV5,
 		migrateV6,
+		migrateV7,
 	}
 
 	for i := version; i < currentVersion; i++ {
@@ -838,5 +839,201 @@ func migrateV6(store *Store) error {
 	}
 
 	store.logger.Info("migration v6 applied successfully")
+	return nil
+}
+
+// migrateV7 adds the document_template and template_element tables
+// for the template builder feature. It also adds a template_ref_id
+// column to resume_export to reference the new document_template
+// table (keeping the legacy template_id TEXT column for backward
+// compatibility). Built-in templates are seeded with full element
+// trees to reproduce the existing Professional and Modern layouts.
+func migrateV7(store *Store) error {
+	tx, err := store.db.Begin()
+	if err != nil {
+		return fmt.Errorf("unable to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	statements := []string{
+		// === New template tables ===
+
+		`CREATE TABLE document_template (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			template_type TEXT NOT NULL CHECK (template_type IN ('resume', 'cover_letter')),
+			is_builtin INTEGER NOT NULL DEFAULT 0 CHECK (is_builtin IN (0, 1)),
+			margin_top REAL NOT NULL DEFAULT 54.0,
+			margin_bottom REAL NOT NULL DEFAULT 54.0,
+			margin_left REAL NOT NULL DEFAULT 72.0,
+			margin_right REAL NOT NULL DEFAULT 72.0,
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+			updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+		)`,
+
+		`CREATE TABLE template_element (
+			id INTEGER PRIMARY KEY,
+			template_id INTEGER NOT NULL REFERENCES document_template(id) ON DELETE CASCADE,
+			parent_id INTEGER REFERENCES template_element(id) ON DELETE CASCADE,
+			element_type TEXT NOT NULL,
+			config TEXT NOT NULL DEFAULT '{}',
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+			updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+		)`,
+
+		`CREATE INDEX idx_template_element_template ON template_element(template_id)`,
+		`CREATE INDEX idx_template_element_parent ON template_element(parent_id)`,
+
+		// === Extend resume_export with template FK ===
+
+		`ALTER TABLE resume_export ADD COLUMN template_ref_id INTEGER REFERENCES document_template(id) ON DELETE SET NULL`,
+
+		// === Seed built-in Professional resume template ===
+
+		`INSERT INTO document_template (id, name, description, template_type, is_builtin, margin_top, margin_bottom, margin_left, margin_right)
+		 VALUES (1, 'Professional', 'Classic centered layout with underlined section headings', 'resume', 1, 54.0, 54.0, 72.0, 72.0)`,
+
+		// Professional template elements (top-level)
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (1, 1, NULL, 'profile_header', '{"name_font_size":18.0,"detail_font_size":10.0,"alignment":"center","link_separator":" | ","show_links":true,"show_links_inline":false,"space_after":6.0}', 0)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (2, 1, NULL, 'role_descriptors', '{"font_size":10.0,"font_style":"regular","alignment":"center","separator":" | ","space_after":14.0}', 1)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (3, 1, NULL, 'section_heading', '{"text":"PROFESSIONAL SUMMARY","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0}', 2)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (4, 1, NULL, 'professional_summary', '{"font_size":10.0,"bullet_char":"\\u2022","space_before":0.0,"space_after":0.0}', 3)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (5, 1, NULL, 'section_heading', '{"text":"CORE EXPERTISE","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0}', 4)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (6, 1, NULL, 'core_expertise', '{"font_size":10.0,"separator":" | ","alignment":"center","space_after":0.0}', 5)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (7, 1, NULL, 'section_heading', '{"text":"WORK EXPERIENCE","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0}', 6)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (8, 1, NULL, 'work_history_loop', '{"entry_gap":4.0,"space_before":0.0,"space_after":0.0}', 7)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (9, 1, NULL, 'section_heading', '{"text":"TECHNICAL SKILLS","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0}', 8)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (10, 1, NULL, 'skills', '{"font_size":10.0,"group_by_category":true,"include_legacy":true,"legacy_suffix":" (Legacy)","category_font_style":"bold","skill_separator":", "}', 9)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (11, 1, NULL, 'section_heading', '{"text":"EDUCATION","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0}', 10)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (12, 1, NULL, 'education_loop', '{"entry_gap":0.0,"space_before":0.0,"space_after":0.0}', 11)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (13, 1, NULL, 'section_heading', '{"text":"CERTIFICATIONS","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0}', 12)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (14, 1, NULL, 'certifications_loop', '{"entry_gap":0.0,"space_before":0.0,"space_after":0.0}', 13)`,
+
+		// Professional work_history_loop children
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (15, 1, 8, 'work_title', '{"font_size":10.0,"font_style":"bold","include_employer":true,"employer_separator":" \\u2014 ","employer_font_style":"italic","space_after":13.0}', 0)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (16, 1, 8, 'work_dates', '{"font_size":9.0,"alignment":"right"}', 1)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (17, 1, 8, 'work_summary', '{}', 2)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (18, 1, 8, 'work_bullets', '{"font_size":10.0,"font_style":"regular","bullet_char":"\\u2022","indent":12.0,"bullet_sym_width":10.0}', 3)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (19, 1, 8, 'work_outcomes', '{"font_size":10.0,"font_style":"regular","bullet_char":"\\u2022","indent":12.0,"bullet_sym_width":10.0,"outcomes_label":"Outcomes:","outcomes_gap":2.0}', 4)`,
+
+		// Professional education_loop children
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (20, 1, 12, 'edu_credential', '{"font_size":10.0,"font_style":"bold"}', 0)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (21, 1, 12, 'edu_institution', '{"font_size":10.0,"font_style":"regular"}', 1)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (22, 1, 12, 'edu_date', '{"font_size":9.0,"alignment":"right"}', 2)`,
+
+		// Professional certifications_loop children
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (23, 1, 14, 'cert_name', '{"font_size":10.0,"font_style":"bold"}', 0)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (24, 1, 14, 'cert_detail', '{"font_size":10.0,"font_style":"regular"}', 1)`,
+
+		// === Seed built-in Modern resume template ===
+
+		`INSERT INTO document_template (id, name, description, template_type, is_builtin, margin_top, margin_bottom, margin_left, margin_right)
+		 VALUES (2, 'Modern', 'Left-aligned layout with clean typography and no underlines', 'resume', 1, 54.0, 54.0, 72.0, 72.0)`,
+
+		// Modern template elements (top-level)
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (25, 2, NULL, 'profile_header', '{"name_font_size":22.0,"detail_font_size":9.0,"alignment":"left","link_separator":"  \\u00B7  ","show_links":true,"show_links_inline":true,"space_after":6.0}', 0)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (26, 2, NULL, 'horizontal_rule', '{"weight":0.3,"space_before":0.0,"space_after":6.0}', 1)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (27, 2, NULL, 'role_descriptors', '{"font_size":10.0,"font_style":"italic","alignment":"left","separator":"  \\u00B7  ","space_after":14.0}', 2)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (28, 2, NULL, 'section_heading', '{"text":"PROFESSIONAL SUMMARY","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":4.0}', 3)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (29, 2, NULL, 'professional_summary', '{"font_size":10.0,"bullet_char":"\\u2022","space_before":0.0,"space_after":0.0}', 4)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (30, 2, NULL, 'section_heading', '{"text":"CORE EXPERTISE","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":4.0}', 5)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (31, 2, NULL, 'core_expertise', '{"font_size":10.0,"separator":" | ","alignment":"left","space_after":0.0}', 6)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (32, 2, NULL, 'section_heading', '{"text":"WORK EXPERIENCE","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":4.0}', 7)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (33, 2, NULL, 'work_history_loop', '{"entry_gap":6.0,"space_before":0.0,"space_after":0.0}', 8)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (34, 2, NULL, 'section_heading', '{"text":"TECHNICAL SKILLS","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":4.0}', 9)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (35, 2, NULL, 'skills', '{"font_size":10.0,"group_by_category":true,"include_legacy":true,"legacy_suffix":" (Legacy)","category_font_style":"bold","skill_separator":", "}', 10)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (36, 2, NULL, 'section_heading', '{"text":"EDUCATION","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":4.0}', 11)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (37, 2, NULL, 'education_loop', '{"entry_gap":0.0,"space_before":0.0,"space_after":0.0}', 12)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (38, 2, NULL, 'section_heading', '{"text":"CERTIFICATIONS","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":4.0}', 13)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (39, 2, NULL, 'certifications_loop', '{"entry_gap":0.0,"space_before":0.0,"space_after":0.0}', 14)`,
+
+		// Modern work_history_loop children
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (40, 2, 33, 'work_title', '{"font_size":10.0,"font_style":"bold","include_employer":true,"employer_separator":", ","employer_font_style":"bold","space_after":13.0}', 0)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (41, 2, 33, 'work_dates', '{"font_size":9.0,"alignment":"right"}', 1)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (42, 2, 33, 'work_summary', '{}', 2)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (43, 2, 33, 'work_bullets', '{"font_size":10.0,"font_style":"regular","bullet_char":"\\u2022","indent":12.0,"bullet_sym_width":10.0}', 3)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (44, 2, 33, 'work_outcomes', '{"font_size":10.0,"font_style":"regular","bullet_char":"\\u2022","indent":12.0,"bullet_sym_width":10.0,"outcomes_label":"Outcomes:","outcomes_gap":2.0}', 4)`,
+
+		// Modern education_loop children
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (45, 2, 37, 'edu_credential', '{"font_size":10.0,"font_style":"bold"}', 0)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (46, 2, 37, 'edu_institution', '{"font_size":10.0,"font_style":"regular"}', 1)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (47, 2, 37, 'edu_date', '{"font_size":9.0,"alignment":"right"}', 2)`,
+
+		// Modern certifications_loop children
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (48, 2, 39, 'cert_name', '{"font_size":10.0,"font_style":"bold"}', 0)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (49, 2, 39, 'cert_detail', '{"font_size":10.0,"font_style":"regular"}', 1)`,
+
+		// === Populate template_ref_id for existing export records ===
+
+		`UPDATE resume_export SET template_ref_id = 1 WHERE template_id = 'professional'`,
+		`UPDATE resume_export SET template_ref_id = 2 WHERE template_id = 'modern'`,
+	}
+
+	for _, stmt := range statements {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("executing statement: %w\nSQL: %s", err, stmt)
+		}
+	}
+
+	if _, err := tx.Exec("PRAGMA user_version = 7"); err != nil {
+		return fmt.Errorf("setting user_version: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing migration: %w", err)
+	}
+
+	store.logger.Info("migration v7 applied successfully")
 	return nil
 }

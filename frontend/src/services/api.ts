@@ -1025,6 +1025,173 @@ export async function listSkillsWithLensTags(): Promise<SkillWithTags[]> {
   return call<SkillWithTags[]>("ListSkillsWithLensTags");
 }
 
+// --- Document Template Types ---
+
+export interface DocumentTemplate {
+  id: number;
+  name: string;
+  description: string;
+  template_type: string;
+  is_builtin: boolean;
+  margin_top: number;
+  margin_bottom: number;
+  margin_left: number;
+  margin_right: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DocumentTemplateInput {
+  name: string;
+  description: string;
+  template_type: string;
+  margin_top: number;
+  margin_bottom: number;
+  margin_left: number;
+  margin_right: number;
+}
+
+export interface TemplateElement {
+  id: number;
+  template_id: number;
+  parent_id: number | null;
+  element_type: string;
+  config: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TemplateElementInput {
+  parent_id: number | null;
+  element_type: string;
+  config: string;
+}
+
+export interface TemplateDetail {
+  id: number;
+  name: string;
+  description: string;
+  template_type: string;
+  is_builtin: boolean;
+  margin_top: number;
+  margin_bottom: number;
+  margin_left: number;
+  margin_right: number;
+  created_at: string;
+  updated_at: string;
+  elements: TemplateElement[];
+}
+
+// --- Document Template API ---
+
+export async function listDocumentTemplates(): Promise<DocumentTemplate[]> {
+  return call<DocumentTemplate[]>("ListDocumentTemplates");
+}
+
+export async function getDocumentTemplate(id: number): Promise<TemplateDetail> {
+  return call<TemplateDetail>("GetDocumentTemplate", id);
+}
+
+export async function createDocumentTemplate(
+  input: DocumentTemplateInput
+): Promise<DocumentTemplate> {
+  const result = await call<DocumentTemplate>(
+    "CreateDocumentTemplate",
+    input
+  );
+  addToast("success", "Template created");
+  return result;
+}
+
+export async function updateDocumentTemplate(
+  id: number,
+  input: DocumentTemplateInput
+): Promise<DocumentTemplate> {
+  const result = await call<DocumentTemplate>(
+    "UpdateDocumentTemplate",
+    id,
+    input
+  );
+  addToast("success", "Template updated");
+  return result;
+}
+
+export async function deleteDocumentTemplate(id: number): Promise<void> {
+  await call<void>("DeleteDocumentTemplate", id);
+  addToast("success", "Template deleted");
+}
+
+export async function duplicateDocumentTemplate(
+  id: number,
+  newName: string
+): Promise<DocumentTemplate> {
+  const result = await call<DocumentTemplate>(
+    "DuplicateDocumentTemplate",
+    id,
+    newName
+  );
+  addToast("success", "Template duplicated");
+  return result;
+}
+
+// --- Template Element API ---
+
+export async function createTemplateElement(
+  templateID: number,
+  input: TemplateElementInput
+): Promise<TemplateElement> {
+  return call<TemplateElement>("CreateTemplateElement", templateID, input);
+}
+
+export async function updateTemplateElement(
+  id: number,
+  input: TemplateElementInput
+): Promise<TemplateElement> {
+  return call<TemplateElement>("UpdateTemplateElement", id, input);
+}
+
+export async function deleteTemplateElement(id: number): Promise<void> {
+  await call<void>("DeleteTemplateElement", id);
+}
+
+export async function reorderTemplateElements(
+  templateID: number,
+  parentID: number | null,
+  orderedIDs: number[]
+): Promise<void> {
+  await call<void>(
+    "ReorderTemplateElements",
+    templateID,
+    parentID,
+    orderedIDs
+  );
+}
+
+// --- Template Import/Export API ---
+
+export async function exportTemplate(
+  id: number,
+  outputPath: string
+): Promise<void> {
+  await call<void>("ExportTemplate", id, outputPath);
+  addToast("success", "Template exported");
+}
+
+export async function importTemplate(
+  inputPath: string
+): Promise<DocumentTemplate> {
+  const result = await call<DocumentTemplate>("ImportTemplate", inputPath);
+  addToast("success", "Template imported");
+  return result;
+}
+
+// --- Template Preview API ---
+
+export async function previewTemplate(templateID: number): Promise<string> {
+  return call<string>("PreviewTemplate", templateID);
+}
+
 // --- Data Management Types ---
 
 export interface ImportResult {

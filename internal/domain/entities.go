@@ -378,6 +378,7 @@ type ExportData struct {
 	Descriptors   []RoleDescriptor      `json:"descriptors"`
 	CoreExpertise []CoreExpertise       `json:"core_expertise"`
 	Lenses        []LensDetail          `json:"lenses"`
+	Templates     []TemplateDetail      `json:"templates"`
 	Exports       []ResumeExport        `json:"exports"`
 	CoverLetters  []CoverLetter         `json:"cover_letters"`
 	Applications  []JobApplication      `json:"applications"`

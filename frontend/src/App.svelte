@@ -12,6 +12,8 @@
   import Applications from "./pages/Applications.svelte";
   import Lenses from "./pages/Lenses.svelte";
   import Settings from "./pages/Settings.svelte";
+  import TemplateList from "./pages/TemplateList.svelte";
+  import TemplateBuilder from "./pages/TemplateBuilder.svelte";
   import Toast from "./components/Toast.svelte";
   import StatusBar from "./components/StatusBar.svelte";
   import ZoomWidget from "./components/ZoomWidget.svelte";
@@ -28,6 +30,8 @@
     "/export": Export,
     "/cover-letters": CoverLetters,
     "/applications": Applications,
+    "/templates": TemplateList,
+    "/templates/:id/builder": TemplateBuilder,
     "/settings": Settings,
   };
 
@@ -47,6 +51,7 @@
     { path: "/export", label: "Export" },
     { path: "/cover-letters", label: "Cover Letters" },
     { path: "/applications", label: "Applications" },
+    { path: "/templates", label: "Templates" },
     { path: "/settings", label: "Settings" },
   ];
 </script>

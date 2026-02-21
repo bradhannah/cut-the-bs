@@ -41,6 +41,7 @@ type App struct {
 	applicationSvc   *service.ApplicationService
 	lensSvc          *service.LensService
 	backupSvc        *service.BackupService
+	templateSvc      *service.TemplateService
 }
 
 // NewApp creates a new App instance. Service dependencies are
@@ -122,6 +123,7 @@ func (a *App) startup(ctx context.Context) {
 	a.applicationSvc = service.NewApplicationService(store)
 	a.lensSvc = service.NewLensService(store)
 	a.backupSvc = service.NewBackupService(store)
+	a.templateSvc = service.NewTemplateService(store)
 
 	log.Info("application started",
 		slog.String("db_path", dbPath))
@@ -1055,6 +1057,98 @@ func (a *App) SetSkillLensTags(skillID int64, lensIDs []int64) error {
 // associations included.
 func (a *App) ListSkillsWithLensTags() ([]domain.SkillWithTags, error) {
 	return a.lensSvc.ListSkillsWithLensTags(a.ctx)
+}
+
+// =================================================================
+// Document Template Bindings
+// =================================================================
+
+// ListDocumentTemplates returns all document templates ordered by
+// is_builtin DESC, name ASC. Built-in templates appear first.
+func (a *App) ListDocumentTemplates() ([]domain.DocumentTemplate, error) {
+	return a.templateSvc.ListDocumentTemplates(a.ctx)
+}
+
+// GetDocumentTemplate returns a template with all its elements.
+func (a *App) GetDocumentTemplate(id int64) (domain.TemplateDetail, error) {
+	return a.templateSvc.GetDocumentTemplate(a.ctx, id)
+}
+
+// CreateDocumentTemplate creates a new user document template.
+func (a *App) CreateDocumentTemplate(input domain.DocumentTemplateInput) (domain.DocumentTemplate, error) {
+	result, err := a.templateSvc.CreateDocumentTemplate(a.ctx, input)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// UpdateDocumentTemplate updates a user template's metadata.
+func (a *App) UpdateDocumentTemplate(id int64, input domain.DocumentTemplateInput) (domain.DocumentTemplate, error) {
+	result, err := a.templateSvc.UpdateDocumentTemplate(a.ctx, id, input)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// DeleteDocumentTemplate deletes a user template. Built-in
+// templates cannot be deleted.
+func (a *App) DeleteDocumentTemplate(id int64) error {
+	err := a.templateSvc.DeleteDocumentTemplate(a.ctx, id)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// DuplicateDocumentTemplate creates a copy of a template with all
+// its elements. The copy is always user-created (is_builtin=false).
+func (a *App) DuplicateDocumentTemplate(id int64, newName string) (domain.DocumentTemplate, error) {
+	result, err := a.templateSvc.DuplicateDocumentTemplate(a.ctx, id, newName)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// CreateTemplateElement adds a new element to a template, appended
+// to the end of the sort order within its parent scope.
+func (a *App) CreateTemplateElement(templateID int64, input domain.TemplateElementInput) (domain.TemplateElement, error) {
+	result, err := a.templateSvc.CreateTemplateElement(a.ctx, templateID, input)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// UpdateTemplateElement updates an element's type and config.
+func (a *App) UpdateTemplateElement(id int64, input domain.TemplateElementInput) (domain.TemplateElement, error) {
+	result, err := a.templateSvc.UpdateTemplateElement(a.ctx, id, input)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// DeleteTemplateElement removes an element from a template.
+func (a *App) DeleteTemplateElement(id int64) error {
+	err := a.templateSvc.DeleteTemplateElement(a.ctx, id)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// ReorderTemplateElements updates sort_order for elements within
+// a specific parent scope (top-level if parentID is nil, or within
+// a specific loop container).
+func (a *App) ReorderTemplateElements(templateID int64, parentID *int64, orderedIDs []int64) error {
+	err := a.templateSvc.ReorderTemplateElements(a.ctx, templateID, parentID, orderedIDs)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // =================================================================
