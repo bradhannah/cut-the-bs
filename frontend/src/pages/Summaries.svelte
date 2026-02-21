@@ -9,6 +9,7 @@
     type ProfessionalSummary,
     type SummaryInput,
   } from "../services/api";
+  import LoadingSpinner from "../components/LoadingSpinner.svelte";
 
   let summaries: ProfessionalSummary[] = [];
   let loading = true;
@@ -26,7 +27,7 @@
   async function loadSummaries(): Promise<void> {
     loading = true;
     try {
-      summaries = await listSummaries();
+      summaries = (await listSummaries()) || [];
     } finally {
       loading = false;
     }
@@ -137,7 +138,7 @@
   {/if}
 
   {#if loading}
-    <p class="loading-message">Loading...</p>
+    <LoadingSpinner />
   {:else if summaries.length === 0}
     <div class="empty-state">
       <p>No summary variants yet.</p>
@@ -196,11 +197,6 @@
     color: #7a8a9a;
     font-size: 0.95rem;
     margin: 0 0 24px;
-  }
-
-  .loading-message {
-    color: #5a6a7a;
-    font-style: italic;
   }
 
   .empty-state {

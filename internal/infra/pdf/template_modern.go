@@ -49,7 +49,7 @@ func renderModern(
 	y += 6
 
 	// 3. Summary.
-	if req.Summary != nil && req.Summary.BodyText != "" {
+	if len(req.Summaries) > 0 {
 		y, err = renderModernSectionHeading(pdf, "Summary", y)
 		if err != nil {
 			return err
@@ -58,9 +58,31 @@ func renderModern(
 		if err := setFont(pdf, "LiberationSans-Regular", modernBodySize); err != nil {
 			return err
 		}
-		y, err = renderWrappedText(pdf, req.Summary.BodyText, marginLeft, y, usableWidth, modernBodySize)
-		if err != nil {
-			return fmt.Errorf("modern summary: %w", err)
+
+		// Render master summary as a plain paragraph, others as bullets.
+		for _, sum := range req.Summaries {
+			if sum.BodyText == "" {
+				continue
+			}
+			isMaster := req.MasterSummaryID != nil && sum.ID == *req.MasterSummaryID
+			if isMaster {
+				y, err = renderWrappedText(pdf, sum.BodyText, marginLeft, y, usableWidth, modernBodySize)
+				if err != nil {
+					return fmt.Errorf("modern summary: %w", err)
+				}
+			}
+		}
+		for _, sum := range req.Summaries {
+			if sum.BodyText == "" {
+				continue
+			}
+			isMaster := req.MasterSummaryID != nil && sum.ID == *req.MasterSummaryID
+			if !isMaster {
+				y, err = renderBulletPoint(pdf, sum.BodyText, y)
+				if err != nil {
+					return fmt.Errorf("modern summary bullet: %w", err)
+				}
+			}
 		}
 	}
 
@@ -88,9 +110,21 @@ func renderModern(
 		if err != nil {
 			return err
 		}
-		y, err = renderSkillsSection(pdf, req.Skills, y, false)
+		y, err = renderSkillsSection(pdf, req.Skills, req.SkillCategoryNames, y, false)
 		if err != nil {
 			return fmt.Errorf("modern skills: %w", err)
+		}
+	}
+
+	// 5.5. Core Expertise.
+	if len(req.CoreExpertise) > 0 {
+		y, err = renderModernSectionHeading(pdf, "Core Expertise", y)
+		if err != nil {
+			return err
+		}
+		y, err = renderCoreExpertiseSection(pdf, req.CoreExpertise, y)
+		if err != nil {
+			return fmt.Errorf("modern core expertise: %w", err)
 		}
 	}
 
@@ -278,15 +312,72 @@ func renderModernWorkEntry(
 
 	y += lineHeight + 2
 
-	// Bullets.
+	// Entry summary (optional, italic paragraph above bullets).
+	if entry.Summary != "" {
+		if err := setFont(pdf, "LiberationSans-Italic", modernBodySize); err != nil {
+			return y, err
+		}
+		var summaryErr error
+		y, summaryErr = renderWrappedText(pdf, entry.Summary, marginLeft, y, usableWidth, modernBodySize)
+		if summaryErr != nil {
+			return y, fmt.Errorf("modern entry summary: %w", summaryErr)
+		}
+	}
+
+	// Primary bullets.
 	if err := setFont(pdf, "LiberationSans-Regular", modernBodySize); err != nil {
 		return y, err
 	}
 
 	for _, bullet := range entry.Bullets {
+		if bullet.BulletType == domain.BulletTypeSecondary {
+			continue
+		}
 		y, err = renderBulletPoint(pdf, bullet.Text, y)
 		if err != nil {
 			return y, err
+		}
+	}
+
+	// Secondary (outcome) bullets — rendered with an "Outcomes:" label
+	// and italic text to visually distinguish from primary bullets.
+	hasSecondary := false
+	for _, bullet := range entry.Bullets {
+		if bullet.BulletType == domain.BulletTypeSecondary {
+			hasSecondary = true
+			break
+		}
+	}
+
+	if hasSecondary {
+		y += 2 // small gap before outcomes block
+
+		// Render "Outcomes:" label in bold.
+		if err := setFont(pdf, "LiberationSans-Bold", modernBodySize); err != nil {
+			return y, err
+		}
+		if err := checkPageBreak(pdf, &y, modernBodySize+lineSpacing); err != nil {
+			return y, err
+		}
+		pdf.SetX(marginLeft + bulletIndent)
+		pdf.SetY(y)
+		if err := pdf.Cell(nil, "Outcomes:"); err != nil {
+			return y, err
+		}
+		y += modernBodySize + lineSpacing
+
+		if err := setFont(pdf, "LiberationSans-Italic", modernBodySize); err != nil {
+			return y, err
+		}
+
+		for _, bullet := range entry.Bullets {
+			if bullet.BulletType != domain.BulletTypeSecondary {
+				continue
+			}
+			y, err = renderBulletPoint(pdf, bullet.Text, y)
+			if err != nil {
+				return y, err
+			}
 		}
 	}
 

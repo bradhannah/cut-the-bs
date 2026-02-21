@@ -16,7 +16,6 @@ import (
 // fullTestData returns a complete RenderResumeRequest with all
 // sections populated, for testing the full rendering path.
 func fullTestData(outputDir string) domain.RenderResumeRequest {
-	summaryID := int64(1)
 	return domain.RenderResumeRequest{
 		TemplateID: "professional",
 		OutputDir:  outputDir,
@@ -31,10 +30,12 @@ func fullTestData(outputDir string) domain.RenderResumeRequest {
 			{ID: 1, Label: "LinkedIn", URL: "https://linkedin.com/in/janesmith", SortOrder: 0},
 			{ID: 2, Label: "GitHub", URL: "https://github.com/janesmith", SortOrder: 1},
 		},
-		Summary: &domain.ProfessionalSummary{
-			ID:       summaryID,
-			Label:    "General",
-			BodyText: "Experienced software engineer with 10 years of expertise in building scalable distributed systems and leading cross-functional teams.",
+		Summaries: []domain.ProfessionalSummary{
+			{
+				ID:       1,
+				Label:    "General",
+				BodyText: "Experienced software engineer with 10 years of expertise in building scalable distributed systems and leading cross-functional teams.",
+			},
 		},
 		WorkHistory: []domain.WorkHistoryEntry{
 			{
@@ -244,7 +245,7 @@ func TestRenderer_RenderResume_NoSummary(t *testing.T) {
 	r := NewRenderer()
 
 	req := fullTestData(dir)
-	req.Summary = nil
+	req.Summaries = nil
 
 	path, err := r.RenderResume(context.Background(), req)
 	require.NoError(t, err, "should render without summary")
@@ -396,6 +397,112 @@ func TestRenderer_RenderResume_PresentEndDate(t *testing.T) {
 // satisfies the domain.PDFRenderer interface.
 func TestRenderer_ImplementsPDFRenderer(t *testing.T) {
 	var _ domain.PDFRenderer = (*Renderer)(nil)
+}
+
+// =================================================================
+// RenderCoverLetter Tests (T075-T076)
+// =================================================================
+
+func coverLetterTestData(outputDir string) domain.RenderCoverLetterRequest {
+	return domain.RenderCoverLetterRequest{
+		OutputDir: outputDir,
+		Profile: domain.UserProfile{
+			ID:       1,
+			FullName: "Jane Smith",
+			Email:    "jane@example.com",
+			Phone:    "555-0100",
+			Location: "New York, NY",
+		},
+		Links: []domain.ProfileLink{
+			{ID: 1, Label: "LinkedIn", URL: "https://linkedin.com/in/janesmith", SortOrder: 0},
+		},
+		Letter: domain.CoverLetter{
+			ID:       1,
+			Title:    "Software Engineer at Acme",
+			BodyText: "Dear Hiring Manager,\n\nI am writing to express my interest in the Software Engineer position at Acme Corp. With over 10 years of experience in building scalable distributed systems, I am confident that I can make a significant contribution to your team.\n\nI look forward to hearing from you.\n\nSincerely,\nJane Smith",
+		},
+	}
+}
+
+func TestRenderer_RenderCoverLetter_Success(t *testing.T) {
+	dir := t.TempDir()
+	r := NewRenderer()
+
+	path, err := r.RenderCoverLetter(context.Background(), coverLetterTestData(dir))
+	require.NoError(t, err, "RenderCoverLetter should not error")
+	require.NotEmpty(t, path, "file path should not be empty")
+
+	info, err := os.Stat(path)
+	require.NoError(t, err, "generated PDF file should exist")
+	assert.Greater(t, info.Size(), int64(0), "PDF file should be non-empty")
+	assert.True(t, strings.HasPrefix(path, dir), "PDF should be in output dir")
+	assert.Equal(t, ".pdf", filepath.Ext(path))
+}
+
+func TestRenderer_RenderCoverLetter_EmptyOutputDir(t *testing.T) {
+	r := NewRenderer()
+
+	req := coverLetterTestData("")
+	_, err := r.RenderCoverLetter(context.Background(), req)
+	assert.Error(t, err, "should error when output dir is empty")
+}
+
+func TestRenderer_RenderCoverLetter_PDFMagic(t *testing.T) {
+	dir := t.TempDir()
+	r := NewRenderer()
+
+	path, err := r.RenderCoverLetter(context.Background(), coverLetterTestData(dir))
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.True(t, len(data) >= 5, "PDF too small")
+	assert.Equal(t, "%PDF-", string(data[:5]),
+		"generated file should be valid PDF")
+}
+
+func TestRenderer_RenderCoverLetter_LongBody(t *testing.T) {
+	dir := t.TempDir()
+	r := NewRenderer()
+
+	req := coverLetterTestData(dir)
+	req.Letter.BodyText = strings.Repeat("This is a paragraph of text that should wrap properly and potentially span multiple pages when the cover letter body is very long. ", 30)
+
+	path, err := r.RenderCoverLetter(context.Background(), req)
+	require.NoError(t, err, "should handle long wrapping body text")
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Greater(t, info.Size(), int64(0))
+}
+
+func TestRenderer_RenderCoverLetter_NoLinks(t *testing.T) {
+	dir := t.TempDir()
+	r := NewRenderer()
+
+	req := coverLetterTestData(dir)
+	req.Links = nil
+
+	path, err := r.RenderCoverLetter(context.Background(), req)
+	require.NoError(t, err, "should render without profile links")
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Greater(t, info.Size(), int64(0))
+}
+
+func TestRenderer_RenderCoverLetter_FilenameFormat(t *testing.T) {
+	dir := t.TempDir()
+	r := NewRenderer()
+
+	path, err := r.RenderCoverLetter(context.Background(), coverLetterTestData(dir))
+	require.NoError(t, err)
+
+	filename := filepath.Base(path)
+	assert.True(t, strings.HasPrefix(filename, "cover-letter-"),
+		"filename should start with cover-letter-")
+	assert.True(t, strings.HasSuffix(filename, ".pdf"),
+		"filename should end with .pdf")
 }
 
 // TestRenderer_ListTemplates verifies that the renderer provides

@@ -268,6 +268,81 @@ func renderWrappedText(
 	return y, nil
 }
 
+// renderWrappedTextHanging renders text starting at x+firstLineIndent for
+// the first line, then wraps continuation lines back to x at the full
+// maxWidth (paragraph / "hanging first-line" style). This is used for
+// labelled entries like "Category: skill1, skill2, skill3" where only
+// the first line is offset by the label width.
+func renderWrappedTextHanging(
+	pdf *gopdf.GoPdf,
+	text string,
+	x, firstLineIndent, y, maxWidth, fontSize float64,
+) (float64, error) {
+	lineHeight := fontSize + lineSpacing
+
+	words := strings.Fields(strings.TrimSpace(text))
+	if len(words) == 0 {
+		return y, nil
+	}
+
+	// First line uses the reduced width after the label.
+	curX := x + firstLineIndent
+	curWidth := maxWidth - firstLineIndent
+	currentLine := ""
+	firstLine := true
+
+	for _, word := range words {
+		testLine := currentLine
+		if testLine != "" {
+			testLine += " "
+		}
+		testLine += word
+
+		width, err := pdf.MeasureTextWidth(testLine)
+		if err != nil {
+			return y, fmt.Errorf("measure text: %w", err)
+		}
+
+		if width > curWidth && currentLine != "" {
+			// Emit the current line.
+			if err := checkPageBreak(pdf, &y, lineHeight); err != nil {
+				return y, err
+			}
+			pdf.SetX(curX)
+			pdf.SetY(y)
+			if err := pdf.Cell(nil, currentLine); err != nil {
+				return y, fmt.Errorf("render text: %w", err)
+			}
+			y += lineHeight
+			currentLine = word
+
+			// After the first line is emitted, switch to full-width left margin.
+			if firstLine {
+				firstLine = false
+				curX = x
+				curWidth = maxWidth
+			}
+		} else {
+			currentLine = testLine
+		}
+	}
+
+	// Emit any remaining text.
+	if currentLine != "" {
+		if err := checkPageBreak(pdf, &y, lineHeight); err != nil {
+			return y, err
+		}
+		pdf.SetX(curX)
+		pdf.SetY(y)
+		if err := pdf.Cell(nil, currentLine); err != nil {
+			return y, fmt.Errorf("render text: %w", err)
+		}
+		y += lineHeight
+	}
+
+	return y, nil
+}
+
 // checkPageBreak adds a new page if the current Y position would
 // exceed the printable area.
 func checkPageBreak(pdf *gopdf.GoPdf, y *float64, needed float64) error {

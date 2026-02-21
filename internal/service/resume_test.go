@@ -211,7 +211,7 @@ func defaultTestRenderer() *mockPDFRenderer {
 func fullExportRequest() domain.ExportRequest {
 	return domain.ExportRequest{
 		TemplateID:       "professional",
-		SummaryID:        int64Ptr(1),
+		SummaryIDs:       []int64{1},
 		WorkHistoryIDs:   []int64{1, 2},
 		BulletIDs:        []int64{10, 11, 20},
 		SkillIDs:         []int64{1, 2, 3},
@@ -219,10 +219,6 @@ func fullExportRequest() domain.ExportRequest {
 		CertificationIDs: []int64{1},
 		DescriptorIDs:    []int64{1, 2},
 	}
-}
-
-func int64Ptr(v int64) *int64 {
-	return &v
 }
 
 // =========================================================
@@ -294,8 +290,8 @@ func TestResumeService_CreateExport_FullSelections(t *testing.T) {
 	assert.Equal(t, "/exports", renderReq.OutputDir)
 	assert.Equal(t, "Jane Doe", renderReq.Profile.FullName)
 	require.Len(t, renderReq.Links, 1)
-	assert.NotNil(t, renderReq.Summary)
-	assert.Equal(t, "General", renderReq.Summary.Label)
+	assert.NotEmpty(t, renderReq.Summaries)
+	assert.Equal(t, "General", renderReq.Summaries[0].Label)
 	require.Len(t, renderReq.WorkHistory, 2)
 	require.Len(t, renderReq.Skills, 3) // excludes COBOL (not in SkillIDs)
 	require.Len(t, renderReq.Academics, 1)
@@ -340,7 +336,7 @@ func TestResumeService_CreateExport_MinimalSelections(t *testing.T) {
 	// Renderer should have been called with only the selected content.
 	require.Len(t, renderer.renderCalls, 1)
 	renderReq := renderer.renderCalls[0]
-	assert.Nil(t, renderReq.Summary)
+	assert.Empty(t, renderReq.Summaries)
 	assert.Empty(t, renderReq.WorkHistory)
 	require.Len(t, renderReq.Skills, 1)
 	assert.Equal(t, "Go", renderReq.Skills[0].Name)
@@ -597,10 +593,9 @@ func TestResumeService_CreateExport_SummaryFetchedByID(t *testing.T) {
 	renderer := defaultTestRenderer()
 	svc := NewResumeService(store, renderer, "/exports")
 
-	summaryID := int64(1)
 	req := domain.ExportRequest{
 		TemplateID:    "professional",
-		SummaryID:     &summaryID,
+		SummaryIDs:    []int64{1},
 		DescriptorIDs: []int64{1},
 	}
 	_, err := svc.CreateExport(context.Background(), req)
@@ -611,12 +606,12 @@ func TestResumeService_CreateExport_SummaryFetchedByID(t *testing.T) {
 	assert.Equal(t, int64(1), store.getSummaryCalls[0])
 
 	require.Len(t, renderer.renderCalls, 1)
-	assert.NotNil(t, renderer.renderCalls[0].Summary)
-	assert.Equal(t, "General", renderer.renderCalls[0].Summary.Label)
+	assert.NotEmpty(t, renderer.renderCalls[0].Summaries)
+	assert.Equal(t, "General", renderer.renderCalls[0].Summaries[0].Label)
 }
 
 // =========================================================
-// CreateExport — no summary when SummaryID is nil
+// CreateExport — no summary when SummaryIDs is empty
 // =========================================================
 
 func TestResumeService_CreateExport_NoSummary(t *testing.T) {
@@ -633,7 +628,7 @@ func TestResumeService_CreateExport_NoSummary(t *testing.T) {
 
 	assert.Empty(t, store.getSummaryCalls)
 	require.Len(t, renderer.renderCalls, 1)
-	assert.Nil(t, renderer.renderCalls[0].Summary)
+	assert.Empty(t, renderer.renderCalls[0].Summaries)
 }
 
 // =========================================================

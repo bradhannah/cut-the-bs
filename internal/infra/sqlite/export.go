@@ -94,7 +94,7 @@ func (s *Store) ListExports(
 	}
 	defer rows.Close() //nolint:errcheck
 
-	var exports []domain.ResumeExport
+	exports := make([]domain.ResumeExport, 0)
 	for rows.Next() {
 		var e domain.ResumeExport
 		var summaryID sql.NullInt64
@@ -297,7 +297,7 @@ func (s *Store) getExportIDs(
 	}
 	defer rows.Close() //nolint:errcheck
 
-	var ids []int64
+	ids := make([]int64, 0)
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {

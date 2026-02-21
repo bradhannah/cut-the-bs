@@ -159,15 +159,16 @@ func TestAcademicService_CreateAcademicCredential_EmptyCredentialType(t *testing
 	store := &mockAcademicStore{}
 	svc := NewAcademicService(store)
 
+	// credential_type is optional — empty string should succeed.
 	_, err := svc.CreateAcademicCredential(context.Background(), domain.AcademicInput{
 		Institution:    "MIT",
 		CredentialType: "",
 		FieldOfStudy:   "CS",
 		CompletionDate: "2020",
 	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "credential type")
-	assert.Empty(t, store.createCredCalls)
+	require.NoError(t, err)
+	require.Len(t, store.createCredCalls, 1)
+	assert.Equal(t, "", store.createCredCalls[0].CredentialType)
 }
 
 func TestAcademicService_CreateAcademicCredential_EmptyFieldOfStudy(t *testing.T) {

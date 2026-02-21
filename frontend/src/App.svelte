@@ -6,10 +6,15 @@
   import Education from "./pages/Education.svelte";
   import Summaries from "./pages/Summaries.svelte";
   import Descriptors from "./pages/Descriptors.svelte";
+  import CoreExpertise from "./pages/CoreExpertise.svelte";
   import Export from "./pages/Export.svelte";
+  import CoverLetters from "./pages/CoverLetters.svelte";
+  import Applications from "./pages/Applications.svelte";
+  import Lenses from "./pages/Lenses.svelte";
   import Settings from "./pages/Settings.svelte";
-  import Placeholder from "./pages/Placeholder.svelte";
   import Toast from "./components/Toast.svelte";
+  import StatusBar from "./components/StatusBar.svelte";
+  import ZoomWidget from "./components/ZoomWidget.svelte";
 
   const routes = {
     "/": WorkHistory,
@@ -18,10 +23,11 @@
     "/education": Education,
     "/summaries": Summaries,
     "/descriptors": Descriptors,
-    "/lenses": Placeholder,
+    "/core-expertise": CoreExpertise,
+    "/lenses": Lenses,
     "/export": Export,
-    "/cover-letters": Placeholder,
-    "/applications": Placeholder,
+    "/cover-letters": CoverLetters,
+    "/applications": Applications,
     "/settings": Settings,
   };
 
@@ -36,6 +42,7 @@
     { path: "/education", label: "Education" },
     { path: "/summaries", label: "Summaries" },
     { path: "/descriptors", label: "Role Descriptors" },
+    { path: "/core-expertise", label: "Core Expertise" },
     { path: "/lenses", label: "Lenses" },
     { path: "/export", label: "Export" },
     { path: "/cover-letters", label: "Cover Letters" },
@@ -63,10 +70,14 @@
       {/each}
     </ul>
   </nav>
-  <main class="content">
-    <Router {routes} />
-  </main>
+  <div class="main-column">
+    <main class="content">
+      <Router {routes} />
+    </main>
+    <StatusBar />
+  </div>
   <Toast />
+  <ZoomWidget />
 </div>
 
 <style>
@@ -136,5 +147,12 @@
     overflow-y: auto;
     padding: 24px;
     background-color: #1b2636;
+  }
+
+  .main-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 </style>

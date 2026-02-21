@@ -13,7 +13,7 @@ type CompetenceLevel struct {
 // from highest (10) to lowest (1). Per FR-030, each level includes
 // descriptive criteria.
 var CompetenceLevels = []CompetenceLevel{
-	{Level: 10, Label: "Visionary", Description: "Could define the industry direction for this technology; recognized thought leader"},
+	{Level: 10, Label: "Visionary", Description: "Could be a principal on any project involving this, and speak on the news about it"},
 	{Level: 9, Label: "Authority", Description: "Could teach a class on this topic; deep expertise across edge cases and internals"},
 	{Level: 8, Label: "Expert", Description: "Considered an expert among peers; go-to person for complex problems"},
 	{Level: 7, Label: "Advanced", Description: "Highly proficient; can architect solutions and mentor others"},

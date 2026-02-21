@@ -9,6 +9,7 @@
 export interface WorkHistoryInput {
   employer_name: string;
   job_title: string;
+  summary: string;
   start_date: string;
   end_date: string;
   date_granularity_start: string;
@@ -19,6 +20,7 @@ export interface WorkHistoryEntry {
   id: number;
   employer_name: string;
   job_title: string;
+  summary: string;
   start_date: string;
   end_date: string;
   date_granularity_start: string;
@@ -33,6 +35,7 @@ export interface AchievementBullet {
   id: number;
   work_history_id: number;
   text: string;
+  bullet_type: string;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -175,9 +178,10 @@ export async function reorderWorkHistory(orderedIDs: number[]): Promise<void> {
 
 export async function createBullet(
   workHistoryID: number,
-  text: string
+  text: string,
+  bulletType: string = "primary"
 ): Promise<AchievementBullet> {
-  return call<AchievementBullet>("CreateBullet", workHistoryID, text);
+  return call<AchievementBullet>("CreateBullet", workHistoryID, text, bulletType);
 }
 
 export async function updateBullet(
@@ -553,6 +557,52 @@ export async function reorderDescriptors(orderedIDs: number[]): Promise<void> {
   await call<void>("ReorderDescriptors", orderedIDs);
 }
 
+// --- Core Expertise Types ---
+
+export interface CoreExpertise {
+  id: number;
+  label: string;
+  sort_order: number;
+}
+
+// --- Core Expertise API ---
+
+export async function listCoreExpertise(): Promise<CoreExpertise[]> {
+  return call<CoreExpertise[]>("ListCoreExpertise");
+}
+
+export async function createCoreExpertise(label: string): Promise<CoreExpertise> {
+  const result = await call<CoreExpertise>("CreateCoreExpertise", label);
+  addToast("success", "Core expertise created");
+  return result;
+}
+
+export async function updateCoreExpertise(
+  id: number,
+  label: string
+): Promise<CoreExpertise> {
+  const result = await call<CoreExpertise>("UpdateCoreExpertise", id, label);
+  addToast("success", "Core expertise updated");
+  return result;
+}
+
+export async function deleteCoreExpertise(id: number): Promise<void> {
+  await call<void>("DeleteCoreExpertise", id);
+  addToast("success", "Core expertise deleted");
+}
+
+export async function reorderCoreExpertise(orderedIDs: number[]): Promise<void> {
+  await call<void>("ReorderCoreExpertise", orderedIDs);
+}
+
+export async function checkCoreExpertiseLensReferences(id: number): Promise<string[]> {
+  return call<string[]>("CheckCoreExpertiseLensReferences", id);
+}
+
+export async function splitCoreExpertiseText(text: string): Promise<string[]> {
+  return call<string[]>("SplitCoreExpertiseText", text);
+}
+
 // --- Resume Export Types ---
 
 export interface ResumeTemplate {
@@ -565,7 +615,8 @@ export interface ResumeTemplate {
 export interface ExportRequest {
   template_id: string;
   lens_id?: number | null;
-  summary_id?: number | null;
+  summary_ids: number[];
+  master_summary_id?: number | null;
   work_history_ids: number[];
   bullet_ids: number[];
   skill_ids: number[];
@@ -573,6 +624,7 @@ export interface ExportRequest {
   academic_ids: number[];
   certification_ids: number[];
   descriptor_ids: number[];
+  core_expertise_ids: number[];
 }
 
 export interface ResumeExport {
@@ -594,9 +646,7 @@ export async function previewExport(req: ExportRequest): Promise<string> {
   return call<string>("PreviewExport", req);
 }
 
-export async function createExport(
-  req: ExportRequest
-): Promise<ResumeExport> {
+export async function createExport(req: ExportRequest): Promise<ResumeExport> {
   const result = await call<ResumeExport>("CreateExport", req);
   addToast("success", "Resume exported successfully");
   return result;
@@ -608,4 +658,442 @@ export async function listExports(): Promise<ResumeExport[]> {
 
 export async function openExportFile(exportID: number): Promise<void> {
   await call<void>("OpenExportFile", exportID);
+}
+
+// --- Cover Letter Types ---
+
+export interface CoverLetterInput {
+  title: string;
+  body_text: string;
+}
+
+export interface CoverLetter {
+  id: number;
+  title: string;
+  body_text: string;
+  file_path: string;
+}
+
+// --- Cover Letter API ---
+
+export async function listCoverLetters(): Promise<CoverLetter[]> {
+  return call<CoverLetter[]>("ListCoverLetters");
+}
+
+export async function createCoverLetter(
+  input: CoverLetterInput
+): Promise<CoverLetter> {
+  const result = await call<CoverLetter>("CreateCoverLetter", input);
+  addToast("success", "Cover letter created");
+  return result;
+}
+
+export async function updateCoverLetter(
+  id: number,
+  input: CoverLetterInput
+): Promise<CoverLetter> {
+  const result = await call<CoverLetter>("UpdateCoverLetter", id, input);
+  addToast("success", "Cover letter updated");
+  return result;
+}
+
+export async function deleteCoverLetter(id: number): Promise<void> {
+  await call<void>("DeleteCoverLetter", id);
+  addToast("success", "Cover letter deleted");
+}
+
+export async function exportCoverLetter(id: number): Promise<string> {
+  const filePath = await call<string>("ExportCoverLetter", id);
+  addToast("success", "Cover letter exported to PDF");
+  return filePath;
+}
+
+// --- Job Application Types ---
+
+export interface ApplicationInput {
+  company_name: string;
+  position_title: string;
+  date_applied: string;
+  fit_indicator: string;
+  resume_export_id: number | null;
+  cover_letter_id: number | null;
+  notes: string;
+}
+
+export interface JobApplication {
+  id: number;
+  company_name: string;
+  position_title: string;
+  date_applied: string;
+  status: string;
+  fit_indicator: string;
+  resume_export_id: number | null;
+  cover_letter_id: number | null;
+  notes: string;
+}
+
+export interface StatusChange {
+  id: number;
+  from_status: string;
+  to_status: string;
+  changed_at: string;
+}
+
+// --- Job Application API ---
+
+export async function listApplications(): Promise<JobApplication[]> {
+  return call<JobApplication[]>("ListApplications");
+}
+
+export async function searchApplications(
+  query: string
+): Promise<JobApplication[]> {
+  return call<JobApplication[]>("SearchApplications", query);
+}
+
+export async function createApplication(
+  input: ApplicationInput
+): Promise<JobApplication> {
+  const result = await call<JobApplication>("CreateApplication", input);
+  addToast("success", "Application created");
+  return result;
+}
+
+export async function updateApplication(
+  id: number,
+  input: ApplicationInput
+): Promise<JobApplication> {
+  const result = await call<JobApplication>("UpdateApplication", id, input);
+  addToast("success", "Application updated");
+  return result;
+}
+
+export async function updateApplicationStatus(
+  id: number,
+  newStatus: string
+): Promise<JobApplication> {
+  const result = await call<JobApplication>(
+    "UpdateApplicationStatus",
+    id,
+    newStatus
+  );
+  addToast("success", `Status changed to ${newStatus}`);
+  return result;
+}
+
+export async function updateApplicationFit(
+  id: number,
+  fitIndicator: string
+): Promise<JobApplication> {
+  const result = await call<JobApplication>(
+    "UpdateApplicationFit",
+    id,
+    fitIndicator
+  );
+  addToast("success", "Fit indicator updated");
+  return result;
+}
+
+export async function getApplicationHistory(
+  id: number
+): Promise<StatusChange[]> {
+  return call<StatusChange[]>("GetApplicationHistory", id);
+}
+
+export async function deleteApplication(id: number): Promise<void> {
+  await call<void>("DeleteApplication", id);
+  addToast("success", "Application deleted");
+}
+
+export async function getApplicationStatuses(): Promise<string[]> {
+  return call<string[]>("GetApplicationStatuses");
+}
+
+export async function getFitIndicators(): Promise<string[]> {
+  return call<string[]>("GetFitIndicators");
+}
+
+// --- Lens Types ---
+
+export interface LensInput {
+  name: string;
+}
+
+export interface Lens {
+  id: number;
+  name: string;
+}
+
+export interface LensWorkHistoryItem {
+  work_history_id: number;
+  sort_order: number;
+}
+
+export interface LensBulletItem {
+  bullet_id: number;
+  sort_order: number;
+}
+
+export interface LensSkillItem {
+  skill_id: number;
+  custom_sort_order: number | null;
+}
+
+export interface LensDescriptorItem {
+  descriptor_id: number;
+  sort_order: number;
+}
+
+export interface LensCoreExpertiseItem {
+  core_expertise_id: number;
+  sort_order: number;
+}
+
+export interface LensSummaryItem {
+  summary_id: number;
+  sort_order: number;
+  is_master: boolean;
+}
+
+export interface LensDetail {
+  id: number;
+  name: string;
+  summaries: LensSummaryItem[];
+  work_history: LensWorkHistoryItem[];
+  bullets: LensBulletItem[];
+  skills: LensSkillItem[];
+  academic_ids: number[];
+  cert_ids: number[];
+  descriptors: LensDescriptorItem[];
+  core_expertise: LensCoreExpertiseItem[];
+}
+
+export interface SkillWithTags {
+  id: number;
+  name: string;
+  category_id: number;
+  competence_level: number;
+  is_legacy: boolean;
+  lens_ids: number[];
+}
+
+// --- Lens API ---
+
+export async function listLenses(): Promise<Lens[]> {
+  return call<Lens[]>("ListLenses");
+}
+
+export async function getLens(id: number): Promise<LensDetail> {
+  return call<LensDetail>("GetLens", id);
+}
+
+export async function createLens(input: LensInput): Promise<Lens> {
+  const result = await call<Lens>("CreateLens", input);
+  addToast("success", "Lens created");
+  return result;
+}
+
+export async function updateLens(
+  id: number,
+  input: LensInput
+): Promise<Lens> {
+  const result = await call<Lens>("UpdateLens", id, input);
+  addToast("success", "Lens updated");
+  return result;
+}
+
+export async function deleteLens(id: number): Promise<void> {
+  await call<void>("DeleteLens", id);
+  addToast("success", "Lens deleted");
+}
+
+export async function setLensWorkHistory(
+  lensID: number,
+  selections: LensWorkHistoryItem[]
+): Promise<void> {
+  await call<void>("SetLensWorkHistory", lensID, selections);
+}
+
+export async function setLensBullets(
+  lensID: number,
+  selections: LensBulletItem[]
+): Promise<void> {
+  await call<void>("SetLensBullets", lensID, selections);
+}
+
+export async function setLensSkills(
+  lensID: number,
+  selections: LensSkillItem[]
+): Promise<void> {
+  await call<void>("SetLensSkills", lensID, selections);
+}
+
+export async function setLensAcademics(
+  lensID: number,
+  academicIDs: number[]
+): Promise<void> {
+  await call<void>("SetLensAcademics", lensID, academicIDs);
+}
+
+export async function setLensCerts(
+  lensID: number,
+  certIDs: number[]
+): Promise<void> {
+  await call<void>("SetLensCerts", lensID, certIDs);
+}
+
+export async function setLensDescriptors(
+  lensID: number,
+  selections: LensDescriptorItem[]
+): Promise<void> {
+  await call<void>("SetLensDescriptors", lensID, selections);
+}
+
+export async function setLensCoreExpertise(
+  lensID: number,
+  selections: LensCoreExpertiseItem[]
+): Promise<void> {
+  await call<void>("SetLensCoreExpertise", lensID, selections);
+}
+
+export async function setLensSummaries(
+  lensID: number,
+  selections: LensSummaryItem[]
+): Promise<void> {
+  await call<void>("SetLensSummaries", lensID, selections);
+}
+
+export async function getLensExportSelections(
+  lensID: number
+): Promise<ExportRequest> {
+  return call<ExportRequest>("GetLensExportSelections", lensID);
+}
+
+// --- Lens Reference Check API ---
+
+export async function checkWorkHistoryLensReferences(
+  id: number
+): Promise<string[]> {
+  return call<string[]>("CheckWorkHistoryLensReferences", id);
+}
+
+export async function checkBulletLensReferences(
+  id: number
+): Promise<string[]> {
+  return call<string[]>("CheckBulletLensReferences", id);
+}
+
+export async function checkAcademicLensReferences(
+  id: number
+): Promise<string[]> {
+  return call<string[]>("CheckAcademicLensReferences", id);
+}
+
+export async function checkCertLensReferences(
+  id: number
+): Promise<string[]> {
+  return call<string[]>("CheckCertLensReferences", id);
+}
+
+export async function checkDescriptorLensReferences(
+  id: number
+): Promise<string[]> {
+  return call<string[]>("CheckDescriptorLensReferences", id);
+}
+
+export async function checkSummaryLensReferences(
+  id: number
+): Promise<string[]> {
+  return call<string[]>("CheckSummaryLensReferences", id);
+}
+
+// --- Skill Lens Tag API ---
+
+export async function getSkillLensTags(skillID: number): Promise<number[]> {
+  return call<number[]>("GetSkillLensTags", skillID);
+}
+
+export async function setSkillLensTags(
+  skillID: number,
+  lensIDs: number[]
+): Promise<void> {
+  await call<void>("SetSkillLensTags", skillID, lensIDs);
+  addToast("success", "Skill lens tags updated");
+}
+
+export async function listSkillsWithLensTags(): Promise<SkillWithTags[]> {
+  return call<SkillWithTags[]>("ListSkillsWithLensTags");
+}
+
+// --- Data Management Types ---
+
+export interface ImportResult {
+  records_imported: number;
+  records_skipped: number;
+  errors: string[];
+}
+
+export interface BackupSettings {
+  rolling_backup_count: number;
+}
+
+// --- Data Management API ---
+
+export async function exportAllData(outputPath: string): Promise<string> {
+  const result = await call<string>("ExportAllData", outputPath);
+  addToast("success", "Data exported successfully");
+  return result;
+}
+
+export async function importAllData(inputPath: string): Promise<void> {
+  await call<void>("ImportAllData", inputPath);
+  addToast("success", "Data imported successfully — please reload");
+}
+
+export async function importCSV(
+  filePath: string,
+  dataType: string
+): Promise<ImportResult> {
+  const result = await call<ImportResult>("ImportCSV", filePath, dataType);
+  addToast(
+    "success",
+    `Imported ${result.records_imported} records (${result.records_skipped} skipped)`
+  );
+  return result;
+}
+
+export async function importJSON(
+  filePath: string,
+  dataType: string
+): Promise<ImportResult> {
+  const result = await call<ImportResult>("ImportJSON", filePath, dataType);
+  addToast(
+    "success",
+    `Imported ${result.records_imported} records (${result.records_skipped} skipped)`
+  );
+  return result;
+}
+
+export async function getDataDirectory(): Promise<string> {
+  return call<string>("GetDataDirectory");
+}
+
+export async function setDataDirectory(path: string): Promise<void> {
+  await call<void>("SetDataDirectory", path);
+  addToast("success", "Data directory updated — restart to apply");
+}
+
+export async function getBackupSettings(): Promise<BackupSettings> {
+  return call<BackupSettings>("GetBackupSettings");
+}
+
+export async function updateBackupSettings(
+  settings: BackupSettings
+): Promise<void> {
+  await call<void>("UpdateBackupSettings", settings);
+  addToast("success", "Backup settings updated");
+}
+
+export async function openDataDirectory(): Promise<void> {
+  await call<void>("OpenDataDirectory");
 }

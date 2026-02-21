@@ -162,11 +162,9 @@ func ValidateSkillInput(input SkillInput) error {
 }
 
 // ValidateAcademicInput validates all fields of an AcademicInput.
+// CredentialType is optional (may be empty).
 func ValidateAcademicInput(input AcademicInput) error {
 	if err := ValidateRequired(input.Institution, "institution"); err != nil {
-		return err
-	}
-	if err := ValidateRequired(input.CredentialType, "credential type"); err != nil {
 		return err
 	}
 	if err := ValidateRequired(input.FieldOfStudy, "field of study"); err != nil {
@@ -232,6 +230,14 @@ func ValidateCoverLetterInput(input CoverLetterInput) error {
 		return err
 	}
 	if err := ValidateRequired(input.BodyText, "body text"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ValidateLensInput validates all fields of a LensInput.
+func ValidateLensInput(input LensInput) error {
+	if err := ValidateRequired(input.Name, "lens name"); err != nil {
 		return err
 	}
 	return nil

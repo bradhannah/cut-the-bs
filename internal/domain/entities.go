@@ -36,6 +36,7 @@ type WorkHistoryEntry struct {
 	ID                   int64               `json:"id"`
 	EmployerName         string              `json:"employer_name"`
 	JobTitle             string              `json:"job_title"`
+	Summary              string              `json:"summary"`
 	StartDate            string              `json:"start_date"`
 	EndDate              string              `json:"end_date"`
 	DateGranularityStart string              `json:"date_granularity_start"`
@@ -51,11 +52,18 @@ type WorkHistoryEntry struct {
 type WorkHistoryInput struct {
 	EmployerName         string `json:"employer_name"`
 	JobTitle             string `json:"job_title"`
+	Summary              string `json:"summary"`
 	StartDate            string `json:"start_date"`
 	EndDate              string `json:"end_date"`
 	DateGranularityStart string `json:"date_granularity_start"`
 	DateGranularityEnd   string `json:"date_granularity_end"`
 }
+
+// BulletTypePrimary represents standard achievement/responsibility bullets.
+const BulletTypePrimary = "primary"
+
+// BulletTypeSecondary represents high-level outcome bullets.
+const BulletTypeSecondary = "secondary"
 
 // AchievementBullet is a single accomplishment or responsibility
 // line item belonging to one WorkHistoryEntry.
@@ -63,6 +71,7 @@ type AchievementBullet struct {
 	ID            int64  `json:"id"`
 	WorkHistoryID int64  `json:"work_history_id"`
 	Text          string `json:"text"`
+	BulletType    string `json:"bullet_type"`
 	SortOrder     int    `json:"sort_order"`
 	CreatedAt     string `json:"created_at"`
 	UpdatedAt     string `json:"updated_at"`
@@ -184,31 +193,49 @@ type RoleDescriptor struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
+// CoreExpertise is a keyword or short phrase representing a core
+// area of expertise, rendered as pipe-separated tags in the PDF.
+type CoreExpertise struct {
+	ID        int64  `json:"id"`
+	Label     string `json:"label"`
+	SortOrder int    `json:"sort_order"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
 // Lens is a named, reusable content selection preset tied to a job
 // type or role variant.
 type Lens struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
-	SummaryID *int64 `json:"summary_id"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
 
 // LensInput is the input type for creating or updating a lens.
 type LensInput struct {
-	Name      string `json:"name"`
-	SummaryID *int64 `json:"summary_id"`
+	Name string `json:"name"`
 }
 
 // LensDetail is a lens with all its content selections included.
 type LensDetail struct {
 	Lens
-	WorkHistory []LensWorkHistoryItem `json:"work_history"`
-	Bullets     []LensBulletItem      `json:"bullets"`
-	Skills      []LensSkillItem       `json:"skills"`
-	AcademicIDs []int64               `json:"academic_ids"`
-	CertIDs     []int64               `json:"cert_ids"`
-	Descriptors []LensDescriptorItem  `json:"descriptors"`
+	Summaries     []LensSummaryItem       `json:"summaries"`
+	WorkHistory   []LensWorkHistoryItem   `json:"work_history"`
+	Bullets       []LensBulletItem        `json:"bullets"`
+	Skills        []LensSkillItem         `json:"skills"`
+	AcademicIDs   []int64                 `json:"academic_ids"`
+	CertIDs       []int64                 `json:"cert_ids"`
+	Descriptors   []LensDescriptorItem    `json:"descriptors"`
+	CoreExpertise []LensCoreExpertiseItem `json:"core_expertise"`
+}
+
+// LensSummaryItem records a summary's inclusion and position in a
+// lens.
+type LensSummaryItem struct {
+	SummaryID int64 `json:"summary_id"`
+	SortOrder int   `json:"sort_order"`
+	IsMaster  bool  `json:"is_master"`
 }
 
 // LensWorkHistoryItem records a work history entry's inclusion and
@@ -238,6 +265,13 @@ type LensDescriptorItem struct {
 	SortOrder    int   `json:"sort_order"`
 }
 
+// LensCoreExpertiseItem records a core expertise item's inclusion
+// and position in a lens.
+type LensCoreExpertiseItem struct {
+	CoreExpertiseID int64 `json:"core_expertise_id"`
+	SortOrder       int   `json:"sort_order"`
+}
+
 // ResumeExport is a generated PDF artifact with a snapshot of
 // what data was selected.
 type ResumeExport struct {
@@ -261,7 +295,8 @@ type ResumeTemplate struct {
 type ExportRequest struct {
 	TemplateID         string        `json:"template_id"`
 	LensID             *int64        `json:"lens_id"`
-	SummaryID          *int64        `json:"summary_id"`
+	SummaryIDs         []int64       `json:"summary_ids"`
+	MasterSummaryID    *int64        `json:"master_summary_id"`
 	WorkHistoryIDs     []int64       `json:"work_history_ids"`
 	BulletIDs          []int64       `json:"bullet_ids"`
 	SkillIDs           []int64       `json:"skill_ids"`
@@ -269,6 +304,7 @@ type ExportRequest struct {
 	AcademicIDs        []int64       `json:"academic_ids"`
 	CertificationIDs   []int64       `json:"certification_ids"`
 	DescriptorIDs      []int64       `json:"descriptor_ids"`
+	CoreExpertiseIDs   []int64       `json:"core_expertise_ids"`
 }
 
 // CoverLetter is a cover letter document.
@@ -323,6 +359,37 @@ type StatusChange struct {
 	FromStatus    string `json:"from_status"`
 	ToStatus      string `json:"to_status"`
 	ChangedAt     string `json:"changed_at"`
+}
+
+// ExportData is the JSON envelope for a full data export. It
+// contains every entity in the system, allowing complete
+// backup/restore of user data.
+type ExportData struct {
+	SchemaVersion int                   `json:"schema_version"`
+	ExportedAt    string                `json:"exported_at"`
+	Profile       UserProfile           `json:"profile"`
+	ProfileLinks  []ProfileLink         `json:"profile_links"`
+	WorkHistory   []WorkHistoryEntry    `json:"work_history"`
+	Categories    []SkillCategory       `json:"skill_categories"`
+	Skills        []Skill               `json:"skills"`
+	Academics     []AcademicCredential  `json:"academics"`
+	Certs         []Certification       `json:"certifications"`
+	Summaries     []ProfessionalSummary `json:"summaries"`
+	Descriptors   []RoleDescriptor      `json:"descriptors"`
+	CoreExpertise []CoreExpertise       `json:"core_expertise"`
+	Lenses        []LensDetail          `json:"lenses"`
+	Exports       []ResumeExport        `json:"exports"`
+	CoverLetters  []CoverLetter         `json:"cover_letters"`
+	Applications  []JobApplication      `json:"applications"`
+	StatusChanges []StatusChange        `json:"status_changes"`
+	SkillLensTags []SkillLensTag        `json:"skill_lens_tags"`
+}
+
+// SkillLensTag records the association between a skill and a lens
+// for import/export purposes.
+type SkillLensTag struct {
+	SkillID int64 `json:"skill_id"`
+	LensID  int64 `json:"lens_id"`
 }
 
 // ImportResult holds the results of a data import operation.

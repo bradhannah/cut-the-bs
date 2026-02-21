@@ -84,7 +84,7 @@ func (s *SkillsService) CheckSkillLensReferences(ctx context.Context, id int64) 
 // occurs.
 func (s *SkillsService) SplitSkillsText(text string) []string {
 	parts := strings.Split(text, ",")
-	var result []string
+	result := make([]string, 0)
 	for _, part := range parts {
 		trimmed := strings.TrimSpace(part)
 		if trimmed != "" {

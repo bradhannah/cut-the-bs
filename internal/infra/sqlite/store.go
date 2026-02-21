@@ -14,6 +14,7 @@ import (
 type Store struct {
 	db     *sql.DB
 	logger *slog.Logger
+	dbPath string
 }
 
 // NewStore opens or creates a SQLite database at the given path and
@@ -56,7 +57,13 @@ func NewStore(dbPath string, logger *slog.Logger) (*Store, error) {
 	return &Store{
 		db:     db,
 		logger: logger,
+		dbPath: dbPath,
 	}, nil
+}
+
+// DBPath returns the path to the underlying database file.
+func (s *Store) DBPath() string {
+	return s.dbPath
 }
 
 // DB returns the underlying *sql.DB. This is primarily for use by

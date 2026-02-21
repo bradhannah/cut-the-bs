@@ -92,6 +92,20 @@ func (c *Config) ExportDir() (string, error) {
 	return exportDir, nil
 }
 
+// BackupDir returns the full path to the rolling backup directory,
+// creating it if needed.
+func (c *Config) BackupDir() (string, error) {
+	dir, err := c.ResolveDataDir()
+	if err != nil {
+		return "", err
+	}
+	backupDir := filepath.Join(dir, "backups")
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+		return "", fmt.Errorf("config: unable to create backup directory: %w", err)
+	}
+	return backupDir, nil
+}
+
 // EnsureDataDir creates the data directory if it does not exist.
 func (c *Config) EnsureDataDir() error {
 	dir, err := c.ResolveDataDir()

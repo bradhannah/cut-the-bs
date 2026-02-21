@@ -44,11 +44,11 @@ func seedExportTestData(t *testing.T, store *Store, ctx context.Context) exportS
 	data.workHistoryIDs = append(data.workHistoryIDs, wh2.ID)
 
 	// Bullets.
-	b1, err := store.CreateBullet(ctx, wh1.ID, "Built something great")
+	b1, err := store.CreateBullet(ctx, wh1.ID, "Built something great", domain.BulletTypePrimary)
 	require.NoError(t, err)
 	data.bulletIDs = append(data.bulletIDs, b1.ID)
 
-	b2, err := store.CreateBullet(ctx, wh1.ID, "Led a team")
+	b2, err := store.CreateBullet(ctx, wh1.ID, "Led a team", domain.BulletTypePrimary)
 	require.NoError(t, err)
 	data.bulletIDs = append(data.bulletIDs, b2.ID)
 

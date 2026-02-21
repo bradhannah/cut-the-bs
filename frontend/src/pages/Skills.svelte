@@ -13,19 +13,44 @@
     renameSkillCategory,
     deleteSkillCategory,
     reorderSkillCategories,
+    listLenses,
+    getSkillLensTags,
+    setSkillLensTags,
     addToast,
     type Skill,
     type SkillInput,
     type SkillCategory,
     type SkillCategoryWithSkills,
     type CompetenceLevel,
+    type Lens,
   } from "../services/api";
   import DragHandle from "../components/DragHandle.svelte";
+  import LoadingSpinner from "../components/LoadingSpinner.svelte";
 
   let categoriesWithSkills: SkillCategoryWithSkills[] = [];
   let categories: SkillCategory[] = [];
   let competenceLevels: CompetenceLevel[] = [];
   let loading = true;
+
+  // Mass edit mode
+  let massEditMode = false;
+
+  // Collapsible categories (persisted in localStorage)
+  const COLLAPSED_KEY = "skills-collapsed-categories";
+  let collapsedCategories: Set<number> = new Set(
+    JSON.parse(localStorage.getItem(COLLAPSED_KEY) || "[]")
+  );
+
+  function toggleCategory(categoryId: number): void {
+    const next = new Set(collapsedCategories);
+    if (next.has(categoryId)) {
+      next.delete(categoryId);
+    } else {
+      next.add(categoryId);
+    }
+    collapsedCategories = next;
+    localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
+  }
 
   // Skill form state
   let showSkillForm = false;
@@ -51,17 +76,23 @@
   let deleteConfirmSkill: Skill | null = null;
   let lensReferences: string[] = [];
 
+  // Lens tags state
+  let lenses: Lens[] = [];
+  let skillLensTagIds: Set<number> = new Set();
+
   onMount(async () => {
-    await Promise.all([loadData(), loadCompetenceLevels()]);
+    await Promise.all([loadData(), loadCompetenceLevels(), loadLenses()]);
   });
 
   async function loadData(): Promise<void> {
     loading = true;
     try {
-      [categoriesWithSkills, categories] = await Promise.all([
+      const [cats, catList] = await Promise.all([
         listSkillsByCategory(),
         listSkillCategories(),
       ]);
+      categoriesWithSkills = cats || [];
+      categories = catList || [];
     } finally {
       loading = false;
     }
@@ -69,7 +100,15 @@
 
   async function loadCompetenceLevels(): Promise<void> {
     try {
-      competenceLevels = await getCompetenceLevels();
+      competenceLevels = (await getCompetenceLevels()) || [];
+    } catch {
+      // Toast already shown
+    }
+  }
+
+  async function loadLenses(): Promise<void> {
+    try {
+      lenses = (await listLenses()) || [];
     } catch {
       // Toast already shown
     }
@@ -83,21 +122,33 @@
     formCategoryId = categories.length > 0 ? categories[0].id : 0;
     formCompetenceLevel = 5;
     formIsLegacy = false;
+    skillLensTagIds = new Set();
     showSkillForm = true;
   }
 
-  function openEditSkill(skill: Skill): void {
+  async function openEditSkill(skill: Skill): Promise<void> {
     editingSkill = skill;
     formName = skill.name;
     formCategoryId = skill.category_id;
     formCompetenceLevel = skill.competence_level;
     formIsLegacy = skill.is_legacy;
     showSkillForm = true;
+
+    // Load lens tags for this skill
+    if (lenses.length > 0) {
+      try {
+        const tagIds = await getSkillLensTags(skill.id);
+        skillLensTagIds = new Set(tagIds || []);
+      } catch {
+        skillLensTagIds = new Set();
+      }
+    }
   }
 
   function cancelSkillForm(): void {
     showSkillForm = false;
     editingSkill = null;
+    skillLensTagIds = new Set();
   }
 
   async function handleSkillSubmit(): Promise<void> {
@@ -118,11 +169,18 @@
     }
 
     try {
+      let savedSkill: Skill;
       if (editingSkill) {
-        await updateSkill(editingSkill.id, input);
+        savedSkill = await updateSkill(editingSkill.id, input);
       } else {
-        await createSkill(input);
+        savedSkill = await createSkill(input);
       }
+
+      // Save lens tags if there are lenses
+      if (lenses.length > 0) {
+        await setSkillLensTags(savedSkill.id, [...skillLensTagIds]);
+      }
+
       showSkillForm = false;
       editingSkill = null;
       await loadData();
@@ -133,7 +191,7 @@
 
   async function confirmDeleteSkill(skill: Skill): Promise<void> {
     try {
-      lensReferences = await checkSkillLensReferences(skill.id);
+      lensReferences = (await checkSkillLensReferences(skill.id)) || [];
       deleteConfirmSkill = skill;
     } catch {
       // Toast already shown
@@ -227,7 +285,7 @@
 
   async function handlePastePreview(): Promise<void> {
     try {
-      pastePreview = await splitSkillsText(pasteText);
+      pastePreview = (await splitSkillsText(pasteText)) || [];
     } catch {
       // Toast already shown
     }
@@ -272,15 +330,68 @@
     return categories.find((c) => c.id === id) as SkillCategory;
   }
 
+  function toggleLensTag(lensId: number): void {
+    const next = new Set(skillLensTagIds);
+    if (next.has(lensId)) {
+      next.delete(lensId);
+    } else {
+      next.add(lensId);
+    }
+    skillLensTagIds = next;
+  }
+
   $: sortedCategories = [...categories].sort(
     (a, b) => a.sort_order - b.sort_order
   );
+
+  // --- Mass Edit Auto-Save ---
+
+  async function handleMassEditCompetence(skill: Skill, level: number): Promise<void> {
+    if (level === skill.competence_level) return;
+    try {
+      await updateSkill(skill.id, {
+        name: skill.name,
+        category_id: skill.category_id,
+        competence_level: level,
+        is_legacy: skill.is_legacy,
+      });
+      // Update local state without full reload for responsiveness
+      skill.competence_level = level;
+      categoriesWithSkills = categoriesWithSkills;
+    } catch {
+      // Toast already shown
+    }
+  }
+
+  async function handleMassEditLegacy(skill: Skill, legacy: boolean): Promise<void> {
+    if (legacy === skill.is_legacy) return;
+    try {
+      await updateSkill(skill.id, {
+        name: skill.name,
+        category_id: skill.category_id,
+        competence_level: skill.competence_level,
+        is_legacy: legacy,
+      });
+      // Update local state without full reload for responsiveness
+      skill.is_legacy = legacy;
+      categoriesWithSkills = categoriesWithSkills;
+    } catch {
+      // Toast already shown
+    }
+  }
 </script>
 
 <div class="skills-page">
   <div class="page-header">
     <h2>Skills</h2>
     <div class="header-actions">
+      <button
+        class="btn btn-small"
+        class:btn-active={massEditMode}
+        on:click={() => (massEditMode = !massEditMode)}
+      >
+        {massEditMode ? "Done Editing" : "Mass Edit"}
+      </button>
       <button class="btn btn-small" on:click={openPasteDialog}>
         Paste Skills
       </button>
@@ -347,6 +458,23 @@
           </label>
         </div>
       </div>
+      {#if lenses.length > 0}
+        <div class="form-field lens-tags-field">
+          <label class="form-label">Lens Tags</label>
+          <div class="lens-tag-list">
+            {#each lenses as lens (lens.id)}
+              <label class="lens-tag-item">
+                <input
+                  type="checkbox"
+                  checked={skillLensTagIds.has(lens.id)}
+                  on:change={() => toggleLensTag(lens.id)}
+                />
+                <span class="lens-tag-label">{lens.name}</span>
+              </label>
+            {/each}
+          </div>
+        </div>
+      {/if}
       <div class="form-actions">
         <button class="btn btn-primary" on:click={handleSkillSubmit}>
           {editingSkill ? "Update" : "Create"}
@@ -450,7 +578,7 @@
 
   <!-- Skills by Category -->
   {#if loading}
-    <p class="loading-message">Loading...</p>
+    <LoadingSpinner />
   {:else if categoriesWithSkills.length === 0}
     <div class="empty-state">
       <p>No skills yet.</p>
@@ -459,39 +587,82 @@
   {:else}
     {#each categoriesWithSkills as group (group.category.id)}
       <section class="section">
-        <h3 class="section-title">{group.category.name}</h3>
-        {#if group.skills.length === 0}
-          <p class="empty-hint">No skills in this category.</p>
-        {:else}
+        <button
+          class="section-title-toggle"
+          on:click={() => toggleCategory(group.category.id)}
+        >
+          <span
+            class="chevron"
+            class:collapsed={collapsedCategories.has(group.category.id)}
+          >&#9660;</span>
+          <h3 class="section-title">{group.category.name}</h3>
+          <span class="skill-count-badge">{group.skills.length}</span>
+        </button>
+        {#if !collapsedCategories.has(group.category.id)}
+          {#if group.skills.length === 0}
+            <p class="empty-hint">No skills in this category.</p>
+          {:else}
           <div class="skill-grid">
             {#each group.skills as skill (skill.id)}
               <div class="skill-card" class:legacy={skill.is_legacy}>
                 <div class="skill-info">
                   <span class="skill-name">{skill.name}</span>
-                  <span class="competence-badge level-{skill.competence_level}">
-                    {skill.competence_level}/10
-                  </span>
-                  {#if skill.is_legacy}
-                    <span class="legacy-badge">Legacy</span>
+                  {#if !massEditMode}
+                    <span class="competence-badge level-{skill.competence_level}">
+                      {skill.competence_level}/10
+                    </span>
+                    {#if skill.is_legacy}
+                      <span class="legacy-badge">Legacy</span>
+                    {/if}
                   {/if}
                 </div>
-                <div class="skill-actions">
-                  <button
-                    class="btn btn-small btn-ghost"
-                    on:click={() => openEditSkill(skill)}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    class="btn btn-small btn-danger"
-                    on:click={() => confirmDeleteSkill(skill)}
-                  >
-                    Delete
-                  </button>
-                </div>
+                {#if massEditMode}
+                  <div class="mass-edit-controls">
+                    <div class="mass-edit-slider">
+                      <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        value={skill.competence_level}
+                        class="form-range"
+                        on:change={(e) =>
+                          handleMassEditCompetence(
+                            skill,
+                            parseInt(e.currentTarget.value)
+                          )}
+                      />
+                      <span class="mass-edit-level">{skill.competence_level}/10</span>
+                    </div>
+                    <label class="mass-edit-legacy">
+                      <input
+                        type="checkbox"
+                        checked={skill.is_legacy}
+                        on:change={(e) =>
+                          handleMassEditLegacy(skill, e.currentTarget.checked)}
+                      />
+                      Legacy
+                    </label>
+                  </div>
+                {:else}
+                  <div class="skill-actions">
+                    <button
+                      class="btn btn-small btn-ghost"
+                      on:click={() => openEditSkill(skill)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      class="btn btn-small btn-danger"
+                      on:click={() => confirmDeleteSkill(skill)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                {/if}
               </div>
             {/each}
           </div>
+        {/if}
         {/if}
       </section>
     {/each}
@@ -607,11 +778,6 @@
     margin: 0 0 24px;
   }
 
-  .loading-message {
-    color: #5a6a7a;
-    font-style: italic;
-  }
-
   .empty-state {
     text-align: center;
     padding: 48px 0;
@@ -645,6 +811,45 @@
 
   .section-header .section-title {
     margin-bottom: 0;
+  }
+
+  /* --- Collapsible Category Toggle --- */
+  .section-title-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    padding: 4px 0;
+    margin: 0 0 8px;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+  }
+
+  .section-title-toggle .section-title {
+    margin: 0;
+  }
+
+  .chevron {
+    font-size: 0.7rem;
+    color: #5a6a7a;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .chevron.collapsed {
+    transform: rotate(-90deg);
+  }
+
+  .skill-count-badge {
+    font-size: 0.7rem;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background-color: #2a3a4a;
+    color: #7a8a9a;
+    font-weight: 600;
+    flex-shrink: 0;
   }
 
   /* --- Forms --- */
@@ -899,6 +1104,52 @@
     flex-shrink: 0;
   }
 
+  /* --- Mass Edit Mode --- */
+  .btn-active {
+    background-color: #2a5090;
+    border-color: #3a60a0;
+    color: #e0e0e0;
+  }
+
+  .btn-active:hover {
+    background-color: #3a60a0;
+  }
+
+  .mass-edit-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+
+  .mass-edit-slider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .mass-edit-slider .form-range {
+    width: 120px;
+    accent-color: #4a8af4;
+  }
+
+  .mass-edit-level {
+    font-size: 0.8rem;
+    color: #a0b0c0;
+    font-weight: 600;
+    min-width: 32px;
+  }
+
+  .mass-edit-legacy {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: #7a8a9a;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
   /* --- Confirm Dialog --- */
   .confirm-dialog {
     background-color: #2a1a1a;
@@ -972,5 +1223,42 @@
 
   .preview-list li {
     margin-bottom: 4px;
+  }
+
+  /* --- Lens Tags --- */
+  .lens-tags-field {
+    margin-bottom: 12px;
+  }
+
+  .lens-tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .lens-tag-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background-color: #1a2332;
+    border: 1px solid #2a3a4a;
+    border-radius: 4px;
+    cursor: pointer;
+    transition:
+      background-color 0.15s,
+      border-color 0.15s;
+  }
+
+  .lens-tag-item:hover {
+    background-color: #2a3a4a;
+    border-color: #3a4a5a;
+  }
+
+  .lens-tag-label {
+    font-size: 0.85rem;
+    color: #c0d0e0;
+    user-select: none;
   }
 </style>

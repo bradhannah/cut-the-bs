@@ -38,7 +38,7 @@ func renderProfessional(
 	}
 
 	// 3. Professional summary.
-	if req.Summary != nil && req.Summary.BodyText != "" {
+	if len(req.Summaries) > 0 {
 		y, err = renderSectionHeading(pdf, "Professional Summary", y, true)
 		if err != nil {
 			return err
@@ -48,9 +48,30 @@ func renderProfessional(
 			return err
 		}
 
-		y, err = renderWrappedText(pdf, req.Summary.BodyText, marginLeft, y, usableWidth, fontSizeBody)
-		if err != nil {
-			return fmt.Errorf("summary text: %w", err)
+		// Render master summary as a plain paragraph, others as bullets.
+		for _, sum := range req.Summaries {
+			if sum.BodyText == "" {
+				continue
+			}
+			isMaster := req.MasterSummaryID != nil && sum.ID == *req.MasterSummaryID
+			if isMaster {
+				y, err = renderWrappedText(pdf, sum.BodyText, marginLeft, y, usableWidth, fontSizeBody)
+				if err != nil {
+					return fmt.Errorf("summary text: %w", err)
+				}
+			}
+		}
+		for _, sum := range req.Summaries {
+			if sum.BodyText == "" {
+				continue
+			}
+			isMaster := req.MasterSummaryID != nil && sum.ID == *req.MasterSummaryID
+			if !isMaster {
+				y, err = renderBulletPoint(pdf, sum.BodyText, y)
+				if err != nil {
+					return fmt.Errorf("summary bullet: %w", err)
+				}
+			}
 		}
 	}
 
@@ -78,9 +99,21 @@ func renderProfessional(
 		if err != nil {
 			return err
 		}
-		y, err = renderSkillsSection(pdf, req.Skills, y, false)
+		y, err = renderSkillsSection(pdf, req.Skills, req.SkillCategoryNames, y, false)
 		if err != nil {
 			return fmt.Errorf("skills: %w", err)
+		}
+	}
+
+	// 5.5. Core Expertise.
+	if len(req.CoreExpertise) > 0 {
+		y, err = renderSectionHeading(pdf, "Core Expertise", y, true)
+		if err != nil {
+			return err
+		}
+		y, err = renderCoreExpertiseSection(pdf, req.CoreExpertise, y)
+		if err != nil {
+			return fmt.Errorf("core expertise: %w", err)
 		}
 	}
 
@@ -158,11 +191,12 @@ func renderWorkEntry(
 ) (float64, error) {
 	lineHeight := fontSizeBody + lineSpacing
 
-	// Title line: Bold job title.
+	// Title line: Bold job title — italic employer on one line.
 	if err := checkPageBreak(pdf, &y, lineHeight*2); err != nil {
 		return y, err
 	}
 
+	// Render bold job title.
 	if err := setFont(pdf, "LiberationSans-Bold", fontSizeBody); err != nil {
 		return y, err
 	}
@@ -170,6 +204,24 @@ func renderWorkEntry(
 	pdf.SetX(marginLeft)
 	pdf.SetY(y)
 	if err := pdf.Cell(nil, entry.JobTitle); err != nil {
+		return y, err
+	}
+
+	// Measure title width while still in bold font.
+	titleW, err := pdf.MeasureTextWidth(entry.JobTitle)
+	if err != nil {
+		return y, err
+	}
+
+	// Render em-dash + employer in italic on same line.
+	if err := setFont(pdf, "LiberationSans-Italic", fontSizeBody); err != nil {
+		return y, err
+	}
+
+	emDash := " \u2014 " + entry.EmployerName
+	pdf.SetX(marginLeft + titleW)
+	pdf.SetY(y)
+	if err := pdf.Cell(nil, emDash); err != nil {
 		return y, err
 	}
 
@@ -196,28 +248,71 @@ func renderWorkEntry(
 
 	y += lineHeight
 
-	// Employer name (italic).
-	if err := setFont(pdf, "LiberationSans-Italic", fontSizeBody); err != nil {
-		return y, err
+	// Entry summary (optional, italic paragraph above bullets).
+	if entry.Summary != "" {
+		if err := setFont(pdf, "LiberationSans-Italic", fontSizeBody); err != nil {
+			return y, err
+		}
+		y, err = renderWrappedText(pdf, entry.Summary, marginLeft, y, usableWidth, fontSizeBody)
+		if err != nil {
+			return y, fmt.Errorf("entry summary: %w", err)
+		}
 	}
 
-	pdf.SetX(marginLeft)
-	pdf.SetY(y)
-	if err := pdf.Cell(nil, entry.EmployerName); err != nil {
-		return y, err
-	}
-
-	y += lineHeight
-
-	// Bullets.
+	// Primary bullets.
 	if err := setFont(pdf, "LiberationSans-Regular", fontSizeBody); err != nil {
 		return y, err
 	}
 
 	for _, bullet := range entry.Bullets {
+		if bullet.BulletType == domain.BulletTypeSecondary {
+			continue
+		}
 		y, err = renderBulletPoint(pdf, bullet.Text, y)
 		if err != nil {
 			return y, err
+		}
+	}
+
+	// Secondary (outcome) bullets — rendered with an "Outcomes:" label
+	// and italic text to visually distinguish from primary bullets.
+	hasSecondary := false
+	for _, bullet := range entry.Bullets {
+		if bullet.BulletType == domain.BulletTypeSecondary {
+			hasSecondary = true
+			break
+		}
+	}
+
+	if hasSecondary {
+		y += 2 // small gap before outcomes block
+
+		// Render "Outcomes:" label in bold.
+		if err := setFont(pdf, "LiberationSans-Bold", fontSizeBody); err != nil {
+			return y, err
+		}
+		if err := checkPageBreak(pdf, &y, fontSizeBody+lineSpacing); err != nil {
+			return y, err
+		}
+		pdf.SetX(marginLeft + bulletIndent)
+		pdf.SetY(y)
+		if err := pdf.Cell(nil, "Outcomes:"); err != nil {
+			return y, err
+		}
+		y += fontSizeBody + lineSpacing
+
+		if err := setFont(pdf, "LiberationSans-Italic", fontSizeBody); err != nil {
+			return y, err
+		}
+
+		for _, bullet := range entry.Bullets {
+			if bullet.BulletType != domain.BulletTypeSecondary {
+				continue
+			}
+			y, err = renderBulletPoint(pdf, bullet.Text, y)
+			if err != nil {
+				return y, err
+			}
 		}
 	}
 
@@ -257,10 +352,12 @@ func renderBulletPoint(
 }
 
 // renderSkillsSection renders skills grouped by category as
-// comma-separated lists. Legacy skills get "(Legacy)" suffix.
+// comma-separated lists with bold category labels.
+// Legacy skills get "(Legacy)" suffix.
 func renderSkillsSection(
 	pdf *gopdf.GoPdf,
 	skills []domain.Skill,
+	categoryNames map[int64]string,
 	y float64,
 	filterLegacy bool,
 ) (float64, error) {
@@ -295,6 +392,30 @@ func renderSkillsSection(
 			continue
 		}
 
+		if err := checkPageBreak(pdf, &y, lineHeight); err != nil {
+			return y, err
+		}
+
+		// Render bold category label if available.
+		catName := categoryNames[catID]
+		labelWidth := 0.0
+		if catName != "" {
+			if err := setFont(pdf, "LiberationSans-Bold", fontSizeBody); err != nil {
+				return y, err
+			}
+			label := catName + ": "
+			pdf.SetX(marginLeft)
+			pdf.SetY(y)
+			if err := pdf.Cell(nil, label); err != nil {
+				return y, err
+			}
+			w, err := pdf.MeasureTextWidth(label)
+			if err != nil {
+				return y, err
+			}
+			labelWidth = w
+		}
+
 		// Build skill names list.
 		names := make([]string, len(g.skills))
 		for i, s := range g.skills {
@@ -306,17 +427,14 @@ func renderSkillsSection(
 		}
 		line := strings.Join(names, ", ")
 
-		if err := checkPageBreak(pdf, &y, lineHeight); err != nil {
-			return y, err
-		}
-
-		// Render as a single wrapped line.
+		// Render as wrapped text after the label, but continuation lines
+		// return to the left margin at full usable width (paragraph style).
 		if err := setFont(pdf, "LiberationSans-Regular", fontSizeBody); err != nil {
 			return y, err
 		}
 
 		var wErr error
-		y, wErr = renderWrappedText(pdf, line, marginLeft, y, usableWidth, fontSizeBody)
+		y, wErr = renderWrappedTextHanging(pdf, line, marginLeft, labelWidth, y, usableWidth, fontSizeBody)
 		if wErr != nil {
 			return y, wErr
 		}
@@ -343,7 +461,10 @@ func renderAcademics(
 			return y, err
 		}
 
-		credLine := ac.CredentialType + " in " + ac.FieldOfStudy
+		credLine := ac.FieldOfStudy
+		if ac.CredentialType != "" {
+			credLine = ac.CredentialType + " in " + credLine
+		}
 		pdf.SetX(marginLeft)
 		pdf.SetY(y)
 		if err := pdf.Cell(nil, credLine); err != nil {
@@ -408,7 +529,13 @@ func renderCertifications(
 			return y, err
 		}
 
-		// Issuing body + date (regular).
+		// Measure cert name width while still in bold font.
+		w, err := pdf.MeasureTextWidth(cert.Name)
+		if err != nil {
+			return y, err
+		}
+
+		// Issuing body + dates (regular, smaller).
 		if err := setFont(pdf, "LiberationSans-Regular", fontSizeSmall); err != nil {
 			return y, err
 		}
@@ -417,10 +544,8 @@ func renderCertifications(
 		if cert.DateEarned != "" {
 			detail += ", " + formatSingleDate(cert.DateEarned, "month")
 		}
-
-		w, err := pdf.MeasureTextWidth(cert.Name)
-		if err != nil {
-			return y, err
+		if cert.ExpirationDate != "" {
+			detail += " – Exp. " + formatSingleDate(cert.ExpirationDate, "month")
 		}
 
 		pdf.SetX(marginLeft + w)
@@ -430,6 +555,31 @@ func renderCertifications(
 		}
 
 		y += lineHeight + 1
+	}
+
+	return y, nil
+}
+
+// renderCoreExpertiseSection renders core expertise items as
+// pipe-separated keywords on one line (wrapping if needed).
+func renderCoreExpertiseSection(
+	pdf *gopdf.GoPdf,
+	items []domain.CoreExpertise,
+	y float64,
+) (float64, error) {
+	labels := make([]string, len(items))
+	for i, ce := range items {
+		labels[i] = ce.Label
+	}
+	line := strings.Join(labels, " | ")
+
+	if err := setFont(pdf, "LiberationSans-Regular", fontSizeBody); err != nil {
+		return y, err
+	}
+
+	y, err := renderWrappedText(pdf, line, marginLeft, y, usableWidth, fontSizeBody)
+	if err != nil {
+		return y, fmt.Errorf("render core expertise: %w", err)
 	}
 
 	return y, nil

@@ -8,12 +8,20 @@
     updateProfileLink,
     deleteProfileLink,
     reorderProfileLinks,
+    getDataDirectory,
+    getBackupSettings,
+    updateBackupSettings,
+    exportAllData,
+    importAllData,
+    openDataDirectory,
     addToast,
     type UserProfile,
     type ProfileLink,
     type ProfileLinkInput,
+    type BackupSettings,
   } from "../services/api";
   import DragHandle from "../components/DragHandle.svelte";
+  import LoadingSpinner from "../components/LoadingSpinner.svelte";
 
   // --- Profile State ---
   let profile: UserProfile = {
@@ -35,7 +43,7 @@
   let linkUrl = "";
 
   onMount(async () => {
-    await Promise.all([loadProfile(), loadLinks()]);
+    await Promise.all([loadProfile(), loadLinks(), loadDataManagement()]);
   });
 
   async function loadProfile(): Promise<void> {
@@ -51,7 +59,7 @@
   async function loadLinks(): Promise<void> {
     linksLoading = true;
     try {
-      links = await listProfileLinks();
+      links = (await listProfileLinks()) || [];
     } finally {
       linksLoading = false;
     }
@@ -150,6 +158,77 @@
     return links.find((l) => l.id === id) as ProfileLink;
   }
 
+  // --- Data Management State ---
+  let dataDirectory = "";
+  let backupSettings: BackupSettings = { rolling_backup_count: 5 };
+  let backupCountInput = 5;
+  let dataLoading = true;
+  let exporting = false;
+  let importing = false;
+
+  async function loadDataManagement(): Promise<void> {
+    dataLoading = true;
+    try {
+      dataDirectory = await getDataDirectory();
+      backupSettings = await getBackupSettings();
+      backupCountInput = backupSettings.rolling_backup_count;
+    } finally {
+      dataLoading = false;
+    }
+  }
+
+  async function handleExport(): Promise<void> {
+    exporting = true;
+    try {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const outputPath = `${dataDirectory}/exports/cut-the-bs-export-${timestamp}.json`;
+      await exportAllData(outputPath);
+    } catch {
+      // Toast already shown
+    } finally {
+      exporting = false;
+    }
+  }
+
+  async function handleImportFromPath(): Promise<void> {
+    const path = prompt("Enter the full path to your backup JSON file:");
+    if (!path) return;
+
+    importing = true;
+    try {
+      await importAllData(path.trim());
+      // Reload all data after import.
+      await Promise.all([loadProfile(), loadLinks(), loadDataManagement()]);
+    } catch {
+      // Toast already shown
+    } finally {
+      importing = false;
+    }
+  }
+
+  async function handleUpdateBackupCount(): Promise<void> {
+    if (backupCountInput < 1) {
+      addToast("error", "Backup count must be at least 1");
+      return;
+    }
+    try {
+      await updateBackupSettings({
+        rolling_backup_count: backupCountInput,
+      });
+      backupSettings.rolling_backup_count = backupCountInput;
+    } catch {
+      // Toast already shown
+    }
+  }
+
+  async function handleOpenDataDir(): Promise<void> {
+    try {
+      await openDataDirectory();
+    } catch {
+      // Toast already shown
+    }
+  }
+
   $: sortedLinks = [...links].sort((a, b) => a.sort_order - b.sort_order);
 </script>
 
@@ -164,7 +243,7 @@
     <h3 class="section-title">Profile</h3>
 
     {#if profileLoading}
-      <p class="loading-message">Loading profile...</p>
+      <LoadingSpinner message="Loading profile..." />
     {:else}
       <div class="form-row">
         <div class="form-field">
@@ -279,7 +358,7 @@
     {/if}
 
     {#if linksLoading}
-      <p class="loading-message">Loading links...</p>
+      <LoadingSpinner message="Loading links..." />
     {:else if sortedLinks.length === 0}
       <div class="empty-state">
         <p>No profile links yet.</p>
@@ -316,6 +395,89 @@
             </div>
           </div>
         </DragHandle>
+      </div>
+    {/if}
+  </section>
+
+  <!-- Data Management Section -->
+  <section class="section">
+    <h3 class="section-title">Data Management</h3>
+    <p class="section-description">
+      Export, import, and backup your resume data.
+    </p>
+
+    {#if dataLoading}
+      <LoadingSpinner message="Loading data settings..." />
+    {:else}
+      <!-- Data Directory -->
+      <div class="data-dir-row">
+        <div class="data-dir-info">
+          <span class="data-dir-label">Data Directory</span>
+          <span class="data-dir-path">{dataDirectory}</span>
+        </div>
+        <button class="btn btn-small" on:click={handleOpenDataDir}>
+          Open
+        </button>
+      </div>
+
+      <!-- Export / Import -->
+      <div class="data-actions">
+        <div class="data-action-group">
+          <h4 class="data-action-title">Export</h4>
+          <p class="data-action-desc">
+            Export all data to a JSON file for backup or transfer.
+          </p>
+          <button
+            class="btn btn-primary"
+            on:click={handleExport}
+            disabled={exporting}
+          >
+            {exporting ? "Exporting..." : "Export All Data"}
+          </button>
+        </div>
+
+        <div class="data-action-group">
+          <h4 class="data-action-title">Import</h4>
+          <p class="data-action-desc">
+            Restore all data from a JSON backup file. This replaces existing
+            data.
+          </p>
+          <button
+            class="btn btn-primary"
+            on:click={handleImportFromPath}
+            disabled={importing}
+          >
+            {importing ? "Importing..." : "Import All Data"}
+          </button>
+        </div>
+      </div>
+
+      <!-- Backup Settings -->
+      <div class="backup-settings">
+        <h4 class="data-action-title">Rolling Backups</h4>
+        <p class="data-action-desc">
+          Automatic database backups are retained up to the configured count.
+        </p>
+        <div class="backup-count-row">
+          <label class="form-label" for="backup-count">
+            Max Backup Count
+          </label>
+          <input
+            id="backup-count"
+            type="number"
+            class="form-input backup-count-input"
+            min="1"
+            max="50"
+            bind:value={backupCountInput}
+          />
+          <button
+            class="btn btn-primary btn-small"
+            on:click={handleUpdateBackupCount}
+            disabled={backupCountInput === backupSettings.rolling_backup_count}
+          >
+            Save
+          </button>
+        </div>
       </div>
     {/if}
   </section>
@@ -365,11 +527,6 @@
     color: #5a6a7a;
     font-size: 0.85rem;
     margin: 0 0 16px;
-  }
-
-  .loading-message {
-    color: #5a6a7a;
-    font-style: italic;
   }
 
   .empty-state {
@@ -546,5 +703,85 @@
     display: flex;
     gap: 4px;
     flex-shrink: 0;
+  }
+
+  /* --- Data Management --- */
+  .data-dir-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background-color: #1e2d3d;
+    border: 1px solid #2a3a4a;
+    border-radius: 4px;
+    margin-bottom: 16px;
+  }
+
+  .data-dir-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .data-dir-label {
+    font-size: 0.8rem;
+    color: #7a8a9a;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .data-dir-path {
+    font-size: 0.85rem;
+    color: #c0d0e0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: monospace;
+  }
+
+  .data-actions {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .data-action-group {
+    flex: 1;
+    background-color: #1e2d3d;
+    border: 1px solid #2a3a4a;
+    border-radius: 6px;
+    padding: 16px;
+  }
+
+  .data-action-title {
+    margin: 0 0 4px;
+    font-size: 0.95rem;
+    color: #e0e0e0;
+    font-weight: 600;
+  }
+
+  .data-action-desc {
+    color: #5a6a7a;
+    font-size: 0.85rem;
+    margin: 0 0 12px;
+  }
+
+  .backup-settings {
+    background-color: #1e2d3d;
+    border: 1px solid #2a3a4a;
+    border-radius: 6px;
+    padding: 16px;
+  }
+
+  .backup-count-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .backup-count-input {
+    width: 70px;
   }
 </style>

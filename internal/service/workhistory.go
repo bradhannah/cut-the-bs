@@ -17,7 +17,7 @@ type WorkHistoryStore interface {
 	UpdateWorkHistory(ctx context.Context, id int64, input domain.WorkHistoryInput) (domain.WorkHistoryEntry, error)
 	DeleteWorkHistory(ctx context.Context, id int64) error
 	ReorderWorkHistory(ctx context.Context, orderedIDs []int64) error
-	CreateBullet(ctx context.Context, workHistoryID int64, text string) (domain.AchievementBullet, error)
+	CreateBullet(ctx context.Context, workHistoryID int64, text string, bulletType string) (domain.AchievementBullet, error)
 	UpdateBullet(ctx context.Context, id int64, text string) (domain.AchievementBullet, error)
 	DeleteBullet(ctx context.Context, id int64) error
 	ReorderBullets(ctx context.Context, workHistoryID int64, orderedIDs []int64) error
@@ -86,12 +86,16 @@ func (s *WorkHistoryService) ReorderWorkHistory(ctx context.Context, orderedIDs 
 // --- Achievement Bullets ---
 
 // CreateBullet validates that text is non-empty and creates a new
-// achievement bullet for the given work history entry.
-func (s *WorkHistoryService) CreateBullet(ctx context.Context, workHistoryID int64, text string) (domain.AchievementBullet, error) {
+// achievement bullet for the given work history entry. bulletType
+// defaults to "primary" if empty.
+func (s *WorkHistoryService) CreateBullet(ctx context.Context, workHistoryID int64, text string, bulletType string) (domain.AchievementBullet, error) {
 	if err := domain.ValidateRequired(text, "bullet text"); err != nil {
 		return domain.AchievementBullet{}, err
 	}
-	return s.store.CreateBullet(ctx, workHistoryID, text)
+	if bulletType == "" {
+		bulletType = domain.BulletTypePrimary
+	}
+	return s.store.CreateBullet(ctx, workHistoryID, text, bulletType)
 }
 
 // UpdateBullet validates that text is non-empty and updates an
@@ -125,7 +129,7 @@ func (s *WorkHistoryService) SplitBulletText(text string) []string {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 
 	lines := strings.Split(text, "\n")
-	var result []string
+	result := make([]string, 0)
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed != "" {

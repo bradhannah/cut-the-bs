@@ -9,6 +9,9 @@
     listDescriptors,
     listSummaries,
     listExports,
+    listLenses,
+    listCoreExpertise,
+    getLensExportSelections,
     createExport,
     openExportFile,
     addToast,
@@ -19,9 +22,13 @@
     type Certification,
     type RoleDescriptor,
     type ProfessionalSummary,
+    type CoreExpertise,
     type ResumeExport,
     type ExportRequest,
+    type Lens,
   } from "../services/api";
+  import LoadingSpinner from "../components/LoadingSpinner.svelte";
+  import { formatTimestamp } from "../services/dateFormat";
 
   // --- Data ---
   let templates: ResumeTemplate[] = [];
@@ -30,21 +37,27 @@
   let academics: AcademicCredential[] = [];
   let certs: Certification[] = [];
   let descriptors: RoleDescriptor[] = [];
+  let coreExpertise: CoreExpertise[] = [];
   let summaries: ProfessionalSummary[] = [];
   let exports: ResumeExport[] = [];
+  let lenses: Lens[] = [];
 
   let loading = true;
   let generating = false;
+  let skillCategoriesExpanded = true;
 
   // --- Selections ---
   let selectedTemplate = "";
-  let selectedSummaryId: number | null = null;
+  let selectedLensId: number | null = null;
+  let selectedSummaryIds: Set<number> = new Set();
+  let masterSummaryId: number | null = null;
   let selectedWorkHistoryIds: Set<number> = new Set();
   let selectedBulletIds: Set<number> = new Set();
   let selectedSkillIds: Set<number> = new Set();
   let selectedAcademicIds: Set<number> = new Set();
   let selectedCertIds: Set<number> = new Set();
   let selectedDescriptorIds: Set<number> = new Set();
+  let selectedCoreExpertiseIds: Set<number> = new Set();
 
   onMount(async () => {
     await loadAllData();
@@ -62,16 +75,20 @@
         listDescriptors(),
         listSummaries(),
         listExports(),
+        listLenses(),
+        listCoreExpertise(),
       ]);
 
-      templates = results[0];
-      workHistory = results[1];
-      skillCategories = results[2];
-      academics = results[3];
-      certs = results[4];
-      descriptors = results[5];
-      summaries = results[6];
-      exports = results[7];
+      templates = results[0] || [];
+      workHistory = results[1] || [];
+      skillCategories = results[2] || [];
+      academics = results[3] || [];
+      certs = results[4] || [];
+      descriptors = results[5] || [];
+      summaries = results[6] || [];
+      exports = results[7] || [];
+      lenses = results[8] || [];
+      coreExpertise = results[9] || [];
 
       // Default to first template.
       if (templates.length > 0 && !selectedTemplate) {
@@ -174,6 +191,16 @@
     selectedDescriptorIds = next;
   }
 
+  function toggleCoreExpertise(id: number): void {
+    const next = new Set(selectedCoreExpertiseIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    selectedCoreExpertiseIds = next;
+  }
+
   // --- Select All / Deselect All ---
   function selectAllWorkHistory(): void {
     const next = new Set<number>();
@@ -191,6 +218,28 @@
   function deselectAllWorkHistory(): void {
     selectedWorkHistoryIds = new Set();
     selectedBulletIds = new Set();
+  }
+
+  async function handleLensChange(): Promise<void> {
+    if (!selectedLensId) {
+      return;
+    }
+    try {
+      const req = await getLensExportSelections(selectedLensId);
+      // Pre-fill selections from lens
+      selectedSummaryIds = new Set(req.summary_ids || []);
+      masterSummaryId = req.master_summary_id ?? null;
+      selectedWorkHistoryIds = new Set(req.work_history_ids || []);
+      selectedBulletIds = new Set(req.bullet_ids || []);
+      selectedSkillIds = new Set(req.skill_ids || []);
+      selectedAcademicIds = new Set(req.academic_ids || []);
+      selectedCertIds = new Set(req.certification_ids || []);
+      selectedDescriptorIds = new Set(req.descriptor_ids || []);
+      selectedCoreExpertiseIds = new Set(req.core_expertise_ids || []);
+      addToast("info", "Selections loaded from lens");
+    } catch {
+      // Toast already shown
+    }
   }
 
   function selectAllSkills(): void {
@@ -219,13 +268,18 @@
     selectedDescriptorIds = new Set(descriptors.map((d) => d.id));
   }
 
+  function selectAllCoreExpertise(): void {
+    selectedCoreExpertiseIds = new Set(coreExpertise.map((ce) => ce.id));
+  }
+
   // --- Computed ---
   $: hasContent =
     selectedWorkHistoryIds.size > 0 ||
     selectedSkillIds.size > 0 ||
     selectedAcademicIds.size > 0 ||
     selectedCertIds.size > 0 ||
-    selectedDescriptorIds.size > 0;
+    selectedDescriptorIds.size > 0 ||
+    selectedCoreExpertiseIds.size > 0;
 
   $: canGenerate = selectedTemplate && hasContent && !generating;
 
@@ -240,7 +294,9 @@
     try {
       const req: ExportRequest = {
         template_id: selectedTemplate,
-        summary_id: selectedSummaryId,
+        lens_id: selectedLensId,
+        summary_ids: [...selectedSummaryIds],
+        master_summary_id: masterSummaryId,
         work_history_ids: [...selectedWorkHistoryIds],
         bullet_ids: [...selectedBulletIds],
         skill_ids: [...selectedSkillIds],
@@ -248,6 +304,7 @@
         academic_ids: [...selectedAcademicIds],
         certification_ids: [...selectedCertIds],
         descriptor_ids: [...selectedDescriptorIds],
+        core_expertise_ids: [...selectedCoreExpertiseIds],
       };
       await createExport(req);
       exports = await listExports();
@@ -263,21 +320,6 @@
       await openExportFile(exportId);
     } catch {
       // Toast already shown
-    }
-  }
-
-  function formatDate(dateStr: string): string {
-    try {
-      const d = new Date(dateStr);
-      return d.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return dateStr;
     }
   }
 
@@ -304,7 +346,7 @@
   </p>
 
   {#if loading}
-    <p class="loading-message">Loading...</p>
+    <LoadingSpinner />
   {:else}
     <div class="export-layout">
       <!-- Left: Selections -->
@@ -326,29 +368,92 @@
           </div>
         </section>
 
+        <!-- Lens Pre-fill -->
+        {#if lenses.length > 0}
+          <section class="selection-section">
+            <h3 class="section-title">Load from Lens</h3>
+            <div class="lens-select-row">
+              <select
+                class="form-input lens-select"
+                bind:value={selectedLensId}
+              >
+                <option value={null}>-- Select a lens --</option>
+                {#each lenses as lens (lens.id)}
+                  <option value={lens.id}>{lens.name}</option>
+                {/each}
+              </select>
+              <button
+                class="btn btn-small"
+                on:click={handleLensChange}
+                disabled={!selectedLensId}
+              >
+                Load
+              </button>
+            </div>
+          </section>
+        {/if}
+
         <!-- Summary Selection -->
         {#if summaries.length > 0}
           <section class="selection-section">
-            <h3 class="section-title">Professional Summary</h3>
-            <div class="summary-select">
-              <label class="checkbox-item">
-                <input
-                  type="radio"
-                  name="summary"
-                  value={null}
-                  bind:group={selectedSummaryId}
-                />
-                <span class="check-label">None</span>
-              </label>
+            <div class="section-header">
+              <h3 class="section-title">Professional Summaries</h3>
+              <div class="section-header-actions">
+                <button
+                  class="btn btn-tiny"
+                  on:click={() =>
+                    (selectedSummaryIds = new Set(summaries.map((s) => s.id)))}
+                >
+                  All
+                </button>
+                <button
+                  class="btn btn-tiny"
+                  on:click={() => {
+                    selectedSummaryIds = new Set();
+                    masterSummaryId = null;
+                  }}
+                >
+                  None
+                </button>
+              </div>
+            </div>
+            {#if selectedSummaryIds.size > 0 && masterSummaryId === null}
+              <div class="master-warning">
+                One summary should be the lead paragraph. Click a "Bullet" pill to promote it.
+              </div>
+            {/if}
+            <div class="check-list">
               {#each summaries as summary (summary.id)}
                 <label class="checkbox-item">
                   <input
-                    type="radio"
-                    name="summary"
-                    value={summary.id}
-                    bind:group={selectedSummaryId}
+                    type="checkbox"
+                    checked={selectedSummaryIds.has(summary.id)}
+                    on:change={() => {
+                      const next = new Set(selectedSummaryIds);
+                      if (next.has(summary.id)) {
+                        next.delete(summary.id);
+                        if (masterSummaryId === summary.id) {
+                          masterSummaryId = null;
+                        }
+                      } else {
+                        next.add(summary.id);
+                      }
+                      selectedSummaryIds = next;
+                    }}
                   />
                   <span class="check-label">{summary.label}</span>
+                  {#if selectedSummaryIds.has(summary.id)}
+                    <button
+                      class="summary-pill"
+                      class:master={masterSummaryId === summary.id}
+                      title={masterSummaryId === summary.id ? "Master summary (renders as lead paragraph)" : "Click to set as master summary"}
+                      on:click|stopPropagation={() => {
+                        masterSummaryId = summary.id;
+                      }}
+                    >
+                      {masterSummaryId === summary.id ? "Master" : "Bullet"}
+                    </button>
+                  {/if}
                 </label>
               {/each}
             </div>
@@ -360,10 +465,7 @@
           <section class="selection-section">
             <div class="section-header">
               <h3 class="section-title">Role Descriptors</h3>
-              <button
-                class="btn btn-tiny"
-                on:click={selectAllDescriptors}
-              >
+              <button class="btn btn-tiny" on:click={selectAllDescriptors}>
                 All
               </button>
             </div>
@@ -382,28 +484,48 @@
           </section>
         {/if}
 
+        <!-- Core Expertise -->
+        {#if coreExpertise.length > 0}
+          <section class="selection-section">
+            <div class="section-header">
+              <h3 class="section-title">Core Expertise</h3>
+              <button class="btn btn-tiny" on:click={selectAllCoreExpertise}>
+                All
+              </button>
+            </div>
+            <div class="check-list">
+              {#each coreExpertise as ce (ce.id)}
+                <label class="checkbox-item">
+                  <input
+                    type="checkbox"
+                    checked={selectedCoreExpertiseIds.has(ce.id)}
+                    on:change={() => toggleCoreExpertise(ce.id)}
+                  />
+                  <span class="check-label">{ce.label}</span>
+                </label>
+              {/each}
+            </div>
+          </section>
+        {/if}
+
         <!-- Work History -->
         {#if workHistory.length > 0}
           <section class="selection-section">
             <div class="section-header">
               <h3 class="section-title">Work History</h3>
               <div class="section-header-actions">
-                <button
-                  class="btn btn-tiny"
-                  on:click={selectAllWorkHistory}
-                >
+                <button class="btn btn-tiny" on:click={selectAllWorkHistory}>
                   All
                 </button>
-                <button
-                  class="btn btn-tiny"
-                  on:click={deselectAllWorkHistory}
-                >
+                <button class="btn btn-tiny" on:click={deselectAllWorkHistory}>
                   None
                 </button>
               </div>
             </div>
             <div class="check-list">
               {#each workHistory as entry (entry.id)}
+                {@const primaryBullets = (entry.bullets || []).filter((b) => b.bullet_type === "primary")}
+                {@const secondaryBullets = (entry.bullets || []).filter((b) => b.bullet_type === "secondary")}
                 <div class="work-history-item">
                   <label class="checkbox-item">
                     <input
@@ -415,21 +537,45 @@
                       <strong>{entry.job_title}</strong> at {entry.employer_name}
                     </span>
                   </label>
-                  {#if selectedWorkHistoryIds.has(entry.id) && (entry.bullets || []).length > 0}
-                    <div class="bullet-check-list">
-                      {#each entry.bullets || [] as bullet (bullet.id)}
-                        <label class="checkbox-item bullet-item">
-                          <input
-                            type="checkbox"
-                            checked={selectedBulletIds.has(bullet.id)}
-                            on:change={() => toggleBullet(bullet.id)}
-                          />
-                          <span class="check-label check-label-small">
-                            {bullet.text}
-                          </span>
-                        </label>
-                      {/each}
-                    </div>
+                  {#if selectedWorkHistoryIds.has(entry.id)}
+                    {#if primaryBullets.length > 0}
+                      <div class="bullet-group">
+                        <span class="bullet-group-label">Bullets</span>
+                        <div class="bullet-check-list">
+                          {#each primaryBullets as bullet (bullet.id)}
+                            <label class="checkbox-item bullet-item">
+                              <input
+                                type="checkbox"
+                                checked={selectedBulletIds.has(bullet.id)}
+                                on:change={() => toggleBullet(bullet.id)}
+                              />
+                              <span class="check-label check-label-small">
+                                {bullet.text}
+                              </span>
+                            </label>
+                          {/each}
+                        </div>
+                      </div>
+                    {/if}
+                    {#if secondaryBullets.length > 0}
+                      <div class="bullet-group">
+                        <span class="bullet-group-label outcome-label">Outcomes</span>
+                        <div class="bullet-check-list">
+                          {#each secondaryBullets as bullet (bullet.id)}
+                            <label class="checkbox-item bullet-item">
+                              <input
+                                type="checkbox"
+                                checked={selectedBulletIds.has(bullet.id)}
+                                on:change={() => toggleBullet(bullet.id)}
+                              />
+                              <span class="check-label check-label-small outcome-text">
+                                {bullet.text}
+                              </span>
+                            </label>
+                          {/each}
+                        </div>
+                      </div>
+                    {/if}
                   {/if}
                 </div>
               {/each}
@@ -437,43 +583,23 @@
           </section>
         {/if}
 
-        <!-- Skills by Category -->
+        <!-- Skills -->
         {#if skillCategories.length > 0}
           <section class="selection-section">
             <div class="section-header">
               <h3 class="section-title">Skills</h3>
               <div class="section-header-actions">
-                <button
-                  class="btn btn-tiny"
-                  on:click={selectAllSkills}
-                >
+                <button class="btn btn-tiny" on:click={selectAllSkills}>
                   All
                 </button>
-                <button
-                  class="btn btn-tiny"
-                  on:click={deselectAllSkills}
-                >
+                <button class="btn btn-tiny" on:click={deselectAllSkills}>
                   None
                 </button>
               </div>
             </div>
-            {#each skillCategories as cat (cat.category.id)}
-              {@const allSelected = cat.skills.every((s) =>
-                selectedSkillIds.has(s.id)
-              )}
-              <div class="skill-category-group">
-                <label class="checkbox-item category-toggle">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    on:change={() =>
-                      toggleAllSkillsInCategory(cat.skills, allSelected)}
-                  />
-                  <span class="check-label category-label">
-                    {cat.category.name}
-                  </span>
-                </label>
-                <div class="skill-chips">
+            <div class="skills-layout">
+              <div class="skills-chips-area">
+                {#each skillCategories as cat (cat.category.id)}
                   {#each cat.skills as skill (skill.id)}
                     <button
                       class="skill-chip"
@@ -482,13 +608,41 @@
                       on:click={() => toggleSkill(skill.id)}
                     >
                       {skill.name}
-                      {#if skill.is_legacy}<span class="legacy-badge">L</span
-                        >{/if}
+                      {#if skill.is_legacy}<span class="legacy-badge">L</span>{/if}
                     </button>
                   {/each}
-                </div>
+                {/each}
               </div>
-            {/each}
+              <div class="skills-categories-pane" class:collapsed={!skillCategoriesExpanded}>
+                <button
+                  class="categories-toggle"
+                  on:click={() => (skillCategoriesExpanded = !skillCategoriesExpanded)}
+                  title={skillCategoriesExpanded ? "Collapse categories" : "Expand categories"}
+                >
+                  {skillCategoriesExpanded ? "Categories \u25BC" : "\u25B6 Cat."}
+                </button>
+                {#if skillCategoriesExpanded}
+                  <div class="categories-list">
+                    {#each skillCategories as cat (cat.category.id)}
+                      {@const allSelected = cat.skills.every((s) =>
+                        selectedSkillIds.has(s.id)
+                      )}
+                      <label class="checkbox-item category-toggle">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          on:change={() =>
+                            toggleAllSkillsInCategory(cat.skills, allSelected)}
+                        />
+                        <span class="check-label category-label">
+                          {cat.category.name}
+                        </span>
+                      </label>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            </div>
           </section>
         {/if}
 
@@ -510,7 +664,7 @@
                     on:change={() => toggleAcademic(acad.id)}
                   />
                   <span class="check-label">
-                    {acad.credential_type} in {acad.field_of_study},
+                    {acad.credential_type ? `${acad.credential_type} in ` : ""}{acad.field_of_study},
                     {acad.institution}
                   </span>
                 </label>
@@ -567,7 +721,7 @@
                   {getTemplateName(exp.template_id)}
                 </span>
                 <span class="export-date">
-                  {formatDate(exp.generated_at)}
+                  {formatTimestamp(exp.generated_at)}
                 </span>
               </button>
             {/each}
@@ -600,11 +754,6 @@
     color: #7a8a9a;
     font-size: 0.95rem;
     margin: 0 0 24px;
-  }
-
-  .loading-message {
-    color: #5a6a7a;
-    font-style: italic;
   }
 
   .export-layout {
@@ -700,19 +849,39 @@
     color: #7a8a9a;
   }
 
+  /* --- Lens Select --- */
+  .lens-select-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .lens-select {
+    flex: 1;
+    background-color: #1a2332;
+    color: #e0e0e0;
+    border: 1px solid #2a3a4a;
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 0.9rem;
+  }
+
+  .lens-select:focus {
+    outline: none;
+    border-color: #4a8af4;
+    box-shadow: 0 0 0 2px rgba(74, 138, 244, 0.15);
+  }
+
+  .form-input {
+    background-color: #1a2332;
+    color: #e0e0e0;
+    border: 1px solid #2a3a4a;
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 0.9rem;
+  }
+
   /* --- Checkboxes --- */
-  .check-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .summary-select {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
   .checkbox-item {
     display: flex;
     align-items: flex-start;
@@ -721,11 +890,16 @@
     padding: 4px 0;
   }
 
-  .checkbox-item input[type="checkbox"],
-  .checkbox-item input[type="radio"] {
+  .checkbox-item input[type="checkbox"] {
     margin-top: 2px;
     accent-color: #4a8af4;
     flex-shrink: 0;
+  }
+
+  .check-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
 
   .check-label {
@@ -764,32 +938,97 @@
     padding: 2px 0;
   }
 
-  /* --- Skill Chips --- */
-  .skill-category-group {
-    margin-bottom: 10px;
+  /* --- Bullet/Outcome grouping --- */
+  .bullet-group {
+    margin-left: 28px;
+    margin-top: 6px;
   }
 
-  .skill-category-group:last-child {
-    margin-bottom: 0;
+  .bullet-group-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #4a8af4;
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  .outcome-label {
+    color: #a070d0;
+  }
+
+  .outcome-text {
+    font-style: italic;
+    color: #b090d0;
+  }
+
+  /* --- Skills layout with collapsible categories --- */
+  .skills-layout {
+    display: flex;
+    gap: 12px;
+  }
+
+  .skills-chips-area {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-content: flex-start;
+  }
+
+  .skills-categories-pane {
+    width: 180px;
+    flex-shrink: 0;
+    border-left: 1px solid #2a3a4a;
+    padding-left: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .skills-categories-pane.collapsed {
+    width: auto;
+    border-left: none;
+    padding-left: 0;
+  }
+
+  .categories-toggle {
+    background: none;
+    border: 1px solid #3a4a5a;
+    border-radius: 4px;
+    color: #7a8a9a;
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    transition: background-color 0.15s, color 0.15s;
+  }
+
+  .categories-toggle:hover {
+    background-color: #2a3a4a;
+    color: #c0d0e0;
+  }
+
+  .categories-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 4px;
   }
 
   .category-toggle {
-    margin-bottom: 6px;
+    margin-bottom: 2px;
   }
 
   .category-label {
     font-weight: 600;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     text-transform: uppercase;
     letter-spacing: 0.03em;
     color: #7a8a9a;
-  }
-
-  .skill-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-left: 24px;
   }
 
   .skill-chip {
@@ -927,5 +1166,44 @@
   .export-date {
     font-size: 0.75rem;
     color: #7a8a9a;
+  }
+
+  /* --- Master Summary Pills --- */
+  .summary-pill {
+    display: inline-block;
+    padding: 1px 10px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    border-radius: 10px;
+    border: 1px solid #3a4a5a;
+    background-color: #1a2332;
+    color: #7a8a9a;
+    cursor: pointer;
+    margin-left: auto;
+    line-height: 1.4;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  .summary-pill:hover {
+    border-color: #e0a060;
+    color: #e0a060;
+  }
+
+  .summary-pill.master {
+    background-color: #3d2e1a;
+    border-color: #e0a060;
+    color: #e0a060;
+  }
+
+  .master-warning {
+    background-color: #3d2e1a;
+    border: 1px solid #705020;
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    color: #e0a060;
+    margin-bottom: 8px;
   }
 </style>

@@ -7,6 +7,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"time"
+
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"cut-the-bs/internal/config"
 	"cut-the-bs/internal/domain"
@@ -26,13 +29,18 @@ type App struct {
 	logger *slog.Logger
 
 	// Services
-	workHistorySvc *service.WorkHistoryService
-	profileSvc     *service.ProfileService
-	skillsSvc      *service.SkillsService
-	academicSvc    *service.AcademicService
-	summarySvc     *service.SummaryService
-	descriptorSvc  *service.DescriptorService
-	resumeSvc      *service.ResumeService
+	workHistorySvc   *service.WorkHistoryService
+	profileSvc       *service.ProfileService
+	skillsSvc        *service.SkillsService
+	academicSvc      *service.AcademicService
+	summarySvc       *service.SummaryService
+	descriptorSvc    *service.DescriptorService
+	coreExpertiseSvc *service.CoreExpertiseService
+	resumeSvc        *service.ResumeService
+	coverLetterSvc   *service.CoverLetterService
+	applicationSvc   *service.ApplicationService
+	lensSvc          *service.LensService
+	backupSvc        *service.BackupService
 }
 
 // NewApp creates a new App instance. Service dependencies are
@@ -99,6 +107,7 @@ func (a *App) startup(ctx context.Context) {
 	a.academicSvc = service.NewAcademicService(store)
 	a.summarySvc = service.NewSummaryService(store)
 	a.descriptorSvc = service.NewDescriptorService(store)
+	a.coreExpertiseSvc = service.NewCoreExpertiseService(store)
 
 	// PDF renderer and export service.
 	renderer := pdf.NewRenderer()
@@ -109,6 +118,10 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	a.resumeSvc = service.NewResumeService(store, renderer, exportDir)
+	a.coverLetterSvc = service.NewCoverLetterService(store, renderer, exportDir)
+	a.applicationSvc = service.NewApplicationService(store)
+	a.lensSvc = service.NewLensService(store)
+	a.backupSvc = service.NewBackupService(store)
 
 	log.Info("application started",
 		slog.String("db_path", dbPath))
@@ -143,6 +156,31 @@ func (a *App) shutdown(ctx context.Context) {
 	log.Info("application shut down")
 }
 
+// emitAutosave emits an autosave:complete event to notify the
+// frontend that a data write has completed successfully.
+func (a *App) emitAutosave() {
+	wailsruntime.EventsEmit(a.ctx, "autosave:complete", map[string]string{
+		"timestamp": time.Now().Format(time.RFC3339),
+	})
+}
+
+// emitBackupComplete emits a backup:complete event after a
+// successful rolling backup or export operation.
+func (a *App) emitBackupComplete(path string) {
+	wailsruntime.EventsEmit(a.ctx, "backup:complete", map[string]string{
+		"timestamp": time.Now().Format(time.RFC3339),
+		"path":      path,
+	})
+}
+
+// emitBackupError emits a backup:error event when a backup
+// operation fails.
+func (a *App) emitBackupError(err error) {
+	wailsruntime.EventsEmit(a.ctx, "backup:error", map[string]string{
+		"error": err.Error(),
+	})
+}
+
 // Greet returns a greeting for the given name.
 // This is a placeholder binding method for initial setup verification.
 func (a *App) Greet(name string) string {
@@ -168,43 +206,76 @@ func (a *App) GetWorkHistory(id int64) (domain.WorkHistoryEntry, error) {
 // CreateWorkHistory creates a new work history entry.
 // Returns the created entry with generated ID.
 func (a *App) CreateWorkHistory(entry domain.WorkHistoryInput) (domain.WorkHistoryEntry, error) {
-	return a.workHistorySvc.CreateWorkHistory(a.ctx, entry)
+	result, err := a.workHistorySvc.CreateWorkHistory(a.ctx, entry)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // UpdateWorkHistory updates an existing work history entry.
 func (a *App) UpdateWorkHistory(id int64, entry domain.WorkHistoryInput) (domain.WorkHistoryEntry, error) {
-	return a.workHistorySvc.UpdateWorkHistory(a.ctx, id, entry)
+	result, err := a.workHistorySvc.UpdateWorkHistory(a.ctx, id, entry)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // DeleteWorkHistory deletes a work history entry and its bullets.
 func (a *App) DeleteWorkHistory(id int64) error {
-	return a.workHistorySvc.DeleteWorkHistory(a.ctx, id)
+	err := a.workHistorySvc.DeleteWorkHistory(a.ctx, id)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // ReorderWorkHistory updates the sort_order of all entries.
 // Accepts a slice of IDs in the desired order.
 func (a *App) ReorderWorkHistory(orderedIDs []int64) error {
-	return a.workHistorySvc.ReorderWorkHistory(a.ctx, orderedIDs)
+	err := a.workHistorySvc.ReorderWorkHistory(a.ctx, orderedIDs)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // CreateBullet adds an achievement bullet to a work history entry.
-func (a *App) CreateBullet(workHistoryID int64, text string) (domain.AchievementBullet, error) {
-	return a.workHistorySvc.CreateBullet(a.ctx, workHistoryID, text)
+// bulletType should be "primary" or "secondary" (defaults to "primary").
+func (a *App) CreateBullet(workHistoryID int64, text string, bulletType string) (domain.AchievementBullet, error) {
+	result, err := a.workHistorySvc.CreateBullet(a.ctx, workHistoryID, text, bulletType)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // UpdateBullet updates an achievement bullet's text.
 func (a *App) UpdateBullet(id int64, text string) (domain.AchievementBullet, error) {
-	return a.workHistorySvc.UpdateBullet(a.ctx, id, text)
+	result, err := a.workHistorySvc.UpdateBullet(a.ctx, id, text)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // DeleteBullet deletes an achievement bullet.
 func (a *App) DeleteBullet(id int64) error {
-	return a.workHistorySvc.DeleteBullet(a.ctx, id)
+	err := a.workHistorySvc.DeleteBullet(a.ctx, id)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // ReorderBullets updates the sort_order of bullets within an entry.
 func (a *App) ReorderBullets(workHistoryID int64, orderedIDs []int64) error {
-	return a.workHistorySvc.ReorderBullets(a.ctx, workHistoryID, orderedIDs)
+	err := a.workHistorySvc.ReorderBullets(a.ctx, workHistoryID, orderedIDs)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // SplitBulletText accepts a block of text and returns individual
@@ -226,7 +297,11 @@ func (a *App) GetProfile() (domain.UserProfile, error) {
 // UpdateProfile updates the user's profile fields.
 // Returns the updated profile.
 func (a *App) UpdateProfile(profile domain.UserProfile) (domain.UserProfile, error) {
-	return a.profileSvc.UpdateProfile(a.ctx, profile)
+	result, err := a.profileSvc.UpdateProfile(a.ctx, profile)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // =================================================================
@@ -240,22 +315,38 @@ func (a *App) ListProfileLinks() ([]domain.ProfileLink, error) {
 
 // CreateProfileLink creates a new profile link.
 func (a *App) CreateProfileLink(input domain.ProfileLinkInput) (domain.ProfileLink, error) {
-	return a.profileSvc.CreateProfileLink(a.ctx, input)
+	result, err := a.profileSvc.CreateProfileLink(a.ctx, input)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // UpdateProfileLink updates an existing profile link.
 func (a *App) UpdateProfileLink(id int64, input domain.ProfileLinkInput) (domain.ProfileLink, error) {
-	return a.profileSvc.UpdateProfileLink(a.ctx, id, input)
+	result, err := a.profileSvc.UpdateProfileLink(a.ctx, id, input)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // DeleteProfileLink deletes a profile link.
 func (a *App) DeleteProfileLink(id int64) error {
-	return a.profileSvc.DeleteProfileLink(a.ctx, id)
+	err := a.profileSvc.DeleteProfileLink(a.ctx, id)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // ReorderProfileLinks updates the sort_order of all profile links.
 func (a *App) ReorderProfileLinks(orderedIDs []int64) error {
-	return a.profileSvc.ReorderProfileLinks(a.ctx, orderedIDs)
+	err := a.profileSvc.ReorderProfileLinks(a.ctx, orderedIDs)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // =================================================================
@@ -276,17 +367,29 @@ func (a *App) ListSkillsByCategory() ([]domain.SkillCategoryWithSkills, error) {
 
 // CreateSkill creates a new skill.
 func (a *App) CreateSkill(skill domain.SkillInput) (domain.Skill, error) {
-	return a.skillsSvc.CreateSkill(a.ctx, skill)
+	result, err := a.skillsSvc.CreateSkill(a.ctx, skill)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // UpdateSkill updates an existing skill.
 func (a *App) UpdateSkill(id int64, skill domain.SkillInput) (domain.Skill, error) {
-	return a.skillsSvc.UpdateSkill(a.ctx, id, skill)
+	result, err := a.skillsSvc.UpdateSkill(a.ctx, id, skill)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // DeleteSkill deletes a skill.
 func (a *App) DeleteSkill(id int64) error {
-	return a.skillsSvc.DeleteSkill(a.ctx, id)
+	err := a.skillsSvc.DeleteSkill(a.ctx, id)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // CheckSkillLensReferences returns the names of lenses that
@@ -319,23 +422,39 @@ func (a *App) ListSkillCategories() ([]domain.SkillCategory, error) {
 
 // CreateSkillCategory creates a new skill category.
 func (a *App) CreateSkillCategory(name string) (domain.SkillCategory, error) {
-	return a.skillsSvc.CreateSkillCategory(a.ctx, name)
+	result, err := a.skillsSvc.CreateSkillCategory(a.ctx, name)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // RenameSkillCategory updates a category's name.
 func (a *App) RenameSkillCategory(id int64, name string) (domain.SkillCategory, error) {
-	return a.skillsSvc.RenameSkillCategory(a.ctx, id, name)
+	result, err := a.skillsSvc.RenameSkillCategory(a.ctx, id, name)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // DeleteSkillCategory deletes a skill category. Fails if any skills
 // still reference it.
 func (a *App) DeleteSkillCategory(id int64) error {
-	return a.skillsSvc.DeleteSkillCategory(a.ctx, id)
+	err := a.skillsSvc.DeleteSkillCategory(a.ctx, id)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // ReorderSkillCategories updates the sort_order of all categories.
 func (a *App) ReorderSkillCategories(orderedIDs []int64) error {
-	return a.skillsSvc.ReorderSkillCategories(a.ctx, orderedIDs)
+	err := a.skillsSvc.ReorderSkillCategories(a.ctx, orderedIDs)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // =================================================================
@@ -350,23 +469,39 @@ func (a *App) ListAcademicCredentials() ([]domain.AcademicCredential, error) {
 
 // CreateAcademicCredential creates a new academic record.
 func (a *App) CreateAcademicCredential(cred domain.AcademicInput) (domain.AcademicCredential, error) {
-	return a.academicSvc.CreateAcademicCredential(a.ctx, cred)
+	result, err := a.academicSvc.CreateAcademicCredential(a.ctx, cred)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // UpdateAcademicCredential updates an academic record.
 func (a *App) UpdateAcademicCredential(id int64, cred domain.AcademicInput) (domain.AcademicCredential, error) {
-	return a.academicSvc.UpdateAcademicCredential(a.ctx, id, cred)
+	result, err := a.academicSvc.UpdateAcademicCredential(a.ctx, id, cred)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // DeleteAcademicCredential deletes an academic record.
 func (a *App) DeleteAcademicCredential(id int64) error {
-	return a.academicSvc.DeleteAcademicCredential(a.ctx, id)
+	err := a.academicSvc.DeleteAcademicCredential(a.ctx, id)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // ReorderAcademicCredentials updates sort_order for all academic
 // credentials.
 func (a *App) ReorderAcademicCredentials(orderedIDs []int64) error {
-	return a.academicSvc.ReorderAcademicCredentials(a.ctx, orderedIDs)
+	err := a.academicSvc.ReorderAcademicCredentials(a.ctx, orderedIDs)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // =================================================================
@@ -381,22 +516,38 @@ func (a *App) ListCertifications() ([]domain.Certification, error) {
 
 // CreateCertification creates a new certification.
 func (a *App) CreateCertification(cert domain.CertificationInput) (domain.Certification, error) {
-	return a.academicSvc.CreateCertification(a.ctx, cert)
+	result, err := a.academicSvc.CreateCertification(a.ctx, cert)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // UpdateCertification updates a certification.
 func (a *App) UpdateCertification(id int64, cert domain.CertificationInput) (domain.Certification, error) {
-	return a.academicSvc.UpdateCertification(a.ctx, id, cert)
+	result, err := a.academicSvc.UpdateCertification(a.ctx, id, cert)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // DeleteCertification deletes a certification.
 func (a *App) DeleteCertification(id int64) error {
-	return a.academicSvc.DeleteCertification(a.ctx, id)
+	err := a.academicSvc.DeleteCertification(a.ctx, id)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // ReorderCertifications updates sort_order for all certifications.
 func (a *App) ReorderCertifications(orderedIDs []int64) error {
-	return a.academicSvc.ReorderCertifications(a.ctx, orderedIDs)
+	err := a.academicSvc.ReorderCertifications(a.ctx, orderedIDs)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // =================================================================
@@ -410,17 +561,29 @@ func (a *App) ListSummaries() ([]domain.ProfessionalSummary, error) {
 
 // CreateSummary creates a new summary variant.
 func (a *App) CreateSummary(summary domain.SummaryInput) (domain.ProfessionalSummary, error) {
-	return a.summarySvc.CreateSummary(a.ctx, summary)
+	result, err := a.summarySvc.CreateSummary(a.ctx, summary)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // UpdateSummary updates an existing summary.
 func (a *App) UpdateSummary(id int64, summary domain.SummaryInput) (domain.ProfessionalSummary, error) {
-	return a.summarySvc.UpdateSummary(a.ctx, id, summary)
+	result, err := a.summarySvc.UpdateSummary(a.ctx, id, summary)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // DeleteSummary deletes a summary variant.
 func (a *App) DeleteSummary(id int64) error {
-	return a.summarySvc.DeleteSummary(a.ctx, id)
+	err := a.summarySvc.DeleteSummary(a.ctx, id)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // =================================================================
@@ -434,22 +597,108 @@ func (a *App) ListDescriptors() ([]domain.RoleDescriptor, error) {
 
 // CreateDescriptor creates a new role descriptor.
 func (a *App) CreateDescriptor(title string) (domain.RoleDescriptor, error) {
-	return a.descriptorSvc.CreateDescriptor(a.ctx, title)
+	result, err := a.descriptorSvc.CreateDescriptor(a.ctx, title)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // UpdateDescriptor updates a descriptor's title.
 func (a *App) UpdateDescriptor(id int64, title string) (domain.RoleDescriptor, error) {
-	return a.descriptorSvc.UpdateDescriptor(a.ctx, id, title)
+	result, err := a.descriptorSvc.UpdateDescriptor(a.ctx, id, title)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // DeleteDescriptor deletes a role descriptor.
 func (a *App) DeleteDescriptor(id int64) error {
-	return a.descriptorSvc.DeleteDescriptor(a.ctx, id)
+	err := a.descriptorSvc.DeleteDescriptor(a.ctx, id)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // ReorderDescriptors updates sort_order for all descriptors.
 func (a *App) ReorderDescriptors(orderedIDs []int64) error {
-	return a.descriptorSvc.ReorderDescriptors(a.ctx, orderedIDs)
+	err := a.descriptorSvc.ReorderDescriptors(a.ctx, orderedIDs)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// =================================================================
+// Core Expertise Bindings
+// =================================================================
+
+// ListCoreExpertise returns all core expertise items ordered by
+// sort_order.
+func (a *App) ListCoreExpertise() ([]domain.CoreExpertise, error) {
+	return a.coreExpertiseSvc.ListCoreExpertise(a.ctx)
+}
+
+// CreateCoreExpertise creates a new core expertise item.
+func (a *App) CreateCoreExpertise(label string) (domain.CoreExpertise, error) {
+	result, err := a.coreExpertiseSvc.CreateCoreExpertise(a.ctx, label)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// UpdateCoreExpertise updates a core expertise item's label.
+func (a *App) UpdateCoreExpertise(id int64, label string) (domain.CoreExpertise, error) {
+	result, err := a.coreExpertiseSvc.UpdateCoreExpertise(a.ctx, id, label)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// DeleteCoreExpertise deletes a core expertise item.
+func (a *App) DeleteCoreExpertise(id int64) error {
+	err := a.coreExpertiseSvc.DeleteCoreExpertise(a.ctx, id)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// ReorderCoreExpertise updates sort_order for all core expertise
+// items.
+func (a *App) ReorderCoreExpertise(orderedIDs []int64) error {
+	err := a.coreExpertiseSvc.ReorderCoreExpertise(a.ctx, orderedIDs)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// CheckCoreExpertiseLensReferences returns the names of lenses that
+// reference a given core expertise item, for delete confirmation.
+func (a *App) CheckCoreExpertiseLensReferences(id int64) ([]string, error) {
+	return a.lensSvc.CheckCoreExpertiseLensReferences(a.ctx, id)
+}
+
+// SetLensCoreExpertise replaces the core expertise selections for
+// a lens.
+func (a *App) SetLensCoreExpertise(lensID int64, selections []domain.LensCoreExpertiseItem) error {
+	err := a.lensSvc.SetLensCoreExpertise(a.ctx, lensID, selections)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// SplitCoreExpertiseText accepts a block of text and returns
+// individual core expertise labels by splitting on pipe, comma,
+// or newline delimiters.
+func (a *App) SplitCoreExpertiseText(text string) []string {
+	return a.coreExpertiseSvc.SplitCoreExpertiseText(text)
 }
 
 // =================================================================
@@ -470,7 +719,11 @@ func (a *App) PreviewExport(req domain.ExportRequest) (string, error) {
 // CreateExport generates a PDF resume, saves it, and creates an
 // export record with a snapshot of the selections used.
 func (a *App) CreateExport(req domain.ExportRequest) (domain.ResumeExport, error) {
-	return a.resumeSvc.CreateExport(a.ctx, req)
+	result, err := a.resumeSvc.CreateExport(a.ctx, req)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
 }
 
 // ListExports returns all previous export records.
@@ -506,4 +759,399 @@ func (a *App) OpenExportFile(exportID int64) error {
 	}
 
 	return nil
+}
+
+// =================================================================
+// Cover Letter Bindings
+// =================================================================
+
+// ListCoverLetters returns all cover letters.
+func (a *App) ListCoverLetters() ([]domain.CoverLetter, error) {
+	return a.coverLetterSvc.ListCoverLetters(a.ctx)
+}
+
+// CreateCoverLetter creates a new cover letter.
+func (a *App) CreateCoverLetter(input domain.CoverLetterInput) (domain.CoverLetter, error) {
+	result, err := a.coverLetterSvc.CreateCoverLetter(a.ctx, input)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// UpdateCoverLetter updates a cover letter's content.
+func (a *App) UpdateCoverLetter(id int64, input domain.CoverLetterInput) (domain.CoverLetter, error) {
+	result, err := a.coverLetterSvc.UpdateCoverLetter(a.ctx, id, input)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// DeleteCoverLetter deletes a cover letter.
+func (a *App) DeleteCoverLetter(id int64) error {
+	err := a.coverLetterSvc.DeleteCoverLetter(a.ctx, id)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// ExportCoverLetter generates a PDF of the cover letter.
+// Returns the file path of the generated PDF.
+func (a *App) ExportCoverLetter(id int64) (string, error) {
+	cl, err := a.coverLetterSvc.ExportCoverLetter(a.ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return cl.FilePath, nil
+}
+
+// =================================================================
+// Job Application Bindings
+// =================================================================
+
+// ListApplications returns all job applications with current status.
+func (a *App) ListApplications() ([]domain.JobApplication, error) {
+	return a.applicationSvc.ListApplications(a.ctx)
+}
+
+// SearchApplications searches by company name or position title.
+func (a *App) SearchApplications(query string) ([]domain.JobApplication, error) {
+	return a.applicationSvc.SearchApplications(a.ctx, query)
+}
+
+// CreateApplication creates a new job application record.
+func (a *App) CreateApplication(input domain.ApplicationInput) (domain.JobApplication, error) {
+	result, err := a.applicationSvc.CreateApplication(a.ctx, input)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// UpdateApplication updates application fields (not status).
+func (a *App) UpdateApplication(id int64, input domain.ApplicationInput) (domain.JobApplication, error) {
+	result, err := a.applicationSvc.UpdateApplication(a.ctx, id, input)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// UpdateApplicationStatus changes the status and records history.
+func (a *App) UpdateApplicationStatus(id int64, newStatus string) (domain.JobApplication, error) {
+	result, err := a.applicationSvc.UpdateApplicationStatus(a.ctx, id, newStatus)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// UpdateApplicationFit updates the fit indicator.
+func (a *App) UpdateApplicationFit(id int64, fitIndicator string) (domain.JobApplication, error) {
+	result, err := a.applicationSvc.UpdateApplicationFit(a.ctx, id, fitIndicator)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// GetApplicationHistory returns the status change history for an
+// application.
+func (a *App) GetApplicationHistory(id int64) ([]domain.StatusChange, error) {
+	return a.applicationSvc.GetApplicationHistory(a.ctx, id)
+}
+
+// DeleteApplication deletes a job application and its history.
+func (a *App) DeleteApplication(id int64) error {
+	err := a.applicationSvc.DeleteApplication(a.ctx, id)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// GetApplicationStatuses returns the fixed list of valid statuses.
+func (a *App) GetApplicationStatuses() []string {
+	return a.applicationSvc.GetApplicationStatuses()
+}
+
+// GetFitIndicators returns the fixed list of fit indicator values.
+func (a *App) GetFitIndicators() []string {
+	return a.applicationSvc.GetFitIndicators()
+}
+
+// =================================================================
+// Lens Bindings
+// =================================================================
+
+// ListLenses returns all lenses.
+func (a *App) ListLenses() ([]domain.Lens, error) {
+	return a.lensSvc.ListLenses(a.ctx)
+}
+
+// GetLens returns a single lens with all its content selections.
+func (a *App) GetLens(id int64) (domain.LensDetail, error) {
+	return a.lensSvc.GetLens(a.ctx, id)
+}
+
+// CreateLens creates a new lens. Returns the created lens.
+func (a *App) CreateLens(input domain.LensInput) (domain.Lens, error) {
+	result, err := a.lensSvc.CreateLens(a.ctx, input)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// UpdateLens updates a lens's name and summary selection.
+func (a *App) UpdateLens(id int64, input domain.LensInput) (domain.Lens, error) {
+	result, err := a.lensSvc.UpdateLens(a.ctx, id, input)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// DeleteLens deletes a lens and all its selections.
+func (a *App) DeleteLens(id int64) error {
+	err := a.lensSvc.DeleteLens(a.ctx, id)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// SetLensWorkHistory replaces the work history selections for a lens.
+func (a *App) SetLensWorkHistory(lensID int64, selections []domain.LensWorkHistoryItem) error {
+	err := a.lensSvc.SetLensWorkHistory(a.ctx, lensID, selections)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// SetLensSummaries replaces the summary selections for a lens.
+func (a *App) SetLensSummaries(lensID int64, selections []domain.LensSummaryItem) error {
+	err := a.lensSvc.SetLensSummaries(a.ctx, lensID, selections)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// SetLensBullets replaces the bullet selections for a lens.
+func (a *App) SetLensBullets(lensID int64, selections []domain.LensBulletItem) error {
+	err := a.lensSvc.SetLensBullets(a.ctx, lensID, selections)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// SetLensSkills replaces the skill selections for a lens.
+func (a *App) SetLensSkills(lensID int64, selections []domain.LensSkillItem) error {
+	err := a.lensSvc.SetLensSkills(a.ctx, lensID, selections)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// SetLensAcademics replaces the academic selections for a lens.
+func (a *App) SetLensAcademics(lensID int64, academicIDs []int64) error {
+	err := a.lensSvc.SetLensAcademics(a.ctx, lensID, academicIDs)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// SetLensCerts replaces the certification selections for a lens.
+func (a *App) SetLensCerts(lensID int64, certIDs []int64) error {
+	err := a.lensSvc.SetLensCerts(a.ctx, lensID, certIDs)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// SetLensDescriptors replaces the descriptor selections for a lens.
+func (a *App) SetLensDescriptors(lensID int64, selections []domain.LensDescriptorItem) error {
+	err := a.lensSvc.SetLensDescriptors(a.ctx, lensID, selections)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// GetLensExportSelections returns the full content selections for a
+// lens, formatted as an ExportRequest that can pre-fill the export
+// dialog.
+func (a *App) GetLensExportSelections(lensID int64) (domain.ExportRequest, error) {
+	return a.lensSvc.GetLensExportSelections(a.ctx, lensID)
+}
+
+// =================================================================
+// Lens Reference Check Bindings
+// =================================================================
+
+// CheckWorkHistoryLensReferences returns the names of lenses that
+// reference a given work history entry, for delete confirmation.
+func (a *App) CheckWorkHistoryLensReferences(id int64) ([]string, error) {
+	return a.lensSvc.CheckWorkHistoryLensReferences(a.ctx, id)
+}
+
+// CheckBulletLensReferences returns the names of lenses that
+// reference a given bullet, for delete confirmation.
+func (a *App) CheckBulletLensReferences(id int64) ([]string, error) {
+	return a.lensSvc.CheckBulletLensReferences(a.ctx, id)
+}
+
+// CheckAcademicLensReferences returns the names of lenses that
+// reference a given academic credential, for delete confirmation.
+func (a *App) CheckAcademicLensReferences(id int64) ([]string, error) {
+	return a.lensSvc.CheckAcademicLensReferences(a.ctx, id)
+}
+
+// CheckCertLensReferences returns the names of lenses that
+// reference a given certification, for delete confirmation.
+func (a *App) CheckCertLensReferences(id int64) ([]string, error) {
+	return a.lensSvc.CheckCertLensReferences(a.ctx, id)
+}
+
+// CheckDescriptorLensReferences returns the names of lenses that
+// reference a given role descriptor, for delete confirmation.
+func (a *App) CheckDescriptorLensReferences(id int64) ([]string, error) {
+	return a.lensSvc.CheckDescriptorLensReferences(a.ctx, id)
+}
+
+// CheckSummaryLensReferences returns the names of lenses that
+// reference a given professional summary, for delete confirmation.
+func (a *App) CheckSummaryLensReferences(id int64) ([]string, error) {
+	return a.lensSvc.CheckSummaryLensReferences(a.ctx, id)
+}
+
+// =================================================================
+// Skill Lens Tag Bindings
+// =================================================================
+
+// GetSkillLensTags returns all lens IDs tagged for a skill.
+func (a *App) GetSkillLensTags(skillID int64) ([]int64, error) {
+	return a.lensSvc.GetSkillLensTags(a.ctx, skillID)
+}
+
+// SetSkillLensTags replaces all lens tags for a skill.
+func (a *App) SetSkillLensTags(skillID int64, lensIDs []int64) error {
+	err := a.lensSvc.SetSkillLensTags(a.ctx, skillID, lensIDs)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// ListSkillsWithLensTags returns all skills with their lens tag
+// associations included.
+func (a *App) ListSkillsWithLensTags() ([]domain.SkillWithTags, error) {
+	return a.lensSvc.ListSkillsWithLensTags(a.ctx)
+}
+
+// =================================================================
+// Data Management Bindings
+// =================================================================
+
+// ExportAllData exports all user data to a JSON file at the specified
+// path. Returns the file path.
+func (a *App) ExportAllData(outputPath string) (string, error) {
+	result, err := a.backupSvc.ExportAllData(a.ctx, outputPath)
+	if err != nil {
+		a.emitBackupError(err)
+		return result, err
+	}
+	a.emitBackupComplete(result)
+	return result, nil
+}
+
+// ImportAllData restores all user data from a JSON backup file.
+// This replaces all existing data.
+func (a *App) ImportAllData(inputPath string) error {
+	err := a.backupSvc.ImportAllData(a.ctx, inputPath)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
+}
+
+// ImportCSV imports structured data from a CSV file. The dataType
+// parameter specifies what is being imported: "work_history",
+// "skills", "academic", "certifications".
+func (a *App) ImportCSV(filePath string, dataType string) (domain.ImportResult, error) {
+	result, err := a.backupSvc.ImportCSV(a.ctx, filePath, dataType)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// ImportJSON imports structured data from a JSON file (partial, not
+// full backup restore).
+func (a *App) ImportJSON(filePath string, dataType string) (domain.ImportResult, error) {
+	result, err := a.backupSvc.ImportJSON(a.ctx, filePath, dataType)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
+// GetDataDirectory returns the current data directory path.
+func (a *App) GetDataDirectory() string {
+	dir, err := a.cfg.ResolveDataDir()
+	if err != nil {
+		return ""
+	}
+	return dir
+}
+
+// SetDataDirectory changes the data directory. Requires app restart.
+func (a *App) SetDataDirectory(path string) error {
+	a.cfg.DataDirectory = path
+	return a.cfg.Save()
+}
+
+// GetBackupSettings returns current backup configuration.
+func (a *App) GetBackupSettings() domain.BackupSettings {
+	return domain.BackupSettings{
+		RollingBackupCount: a.cfg.Backup.RollingBackupCount,
+	}
+}
+
+// UpdateBackupSettings updates backup configuration.
+func (a *App) UpdateBackupSettings(settings domain.BackupSettings) error {
+	if settings.RollingBackupCount <= 0 {
+		settings.RollingBackupCount = config.DefaultRollingBackupCount
+	}
+	a.cfg.Backup.RollingBackupCount = settings.RollingBackupCount
+	return a.cfg.Save()
+}
+
+// OpenDataDirectory opens the data directory in the system file
+// manager.
+func (a *App) OpenDataDirectory() error {
+	dir, err := a.cfg.ResolveDataDir()
+	if err != nil {
+		return err
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", dir)
+	case "linux":
+		cmd = exec.Command("xdg-open", dir)
+	default:
+		cmd = exec.Command("explorer", dir)
+	}
+
+	return cmd.Start()
 }

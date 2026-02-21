@@ -20,9 +20,11 @@ type ExportStore interface {
 	GetSummary(ctx context.Context, id int64) (domain.ProfessionalSummary, error)
 	ListWorkHistory(ctx context.Context) ([]domain.WorkHistoryEntry, error)
 	ListSkills(ctx context.Context) ([]domain.Skill, error)
+	ListSkillCategories(ctx context.Context) ([]domain.SkillCategory, error)
 	ListAcademicCredentials(ctx context.Context) ([]domain.AcademicCredential, error)
 	ListCertifications(ctx context.Context) ([]domain.Certification, error)
 	ListDescriptors(ctx context.Context) ([]domain.RoleDescriptor, error)
+	ListCoreExpertise(ctx context.Context) ([]domain.CoreExpertise, error)
 
 	// Export records
 	ListExports(ctx context.Context) ([]domain.ResumeExport, error)
@@ -118,10 +120,18 @@ func (s *ResumeService) CreateExport(
 		return domain.ResumeExport{}, fmt.Errorf("render resume: %w", err)
 	}
 
+	// For the historical export record, snapshot the first summary ID
+	// (if any) for backward compatibility.
+	var snapshotSummaryID *int64
+	if len(req.SummaryIDs) > 0 {
+		sid := req.SummaryIDs[0]
+		snapshotSummaryID = &sid
+	}
+
 	export, err := s.store.CreateExport(ctx, domain.ResumeExport{
 		TemplateID: req.TemplateID,
 		FilePath:   filePath,
-		SummaryID:  req.SummaryID,
+		SummaryID:  snapshotSummaryID,
 		LensID:     req.LensID,
 	})
 	if err != nil {
@@ -146,7 +156,8 @@ func validateExportRequest(req domain.ExportRequest) error {
 		len(req.SkillIDs) > 0 ||
 		len(req.AcademicIDs) > 0 ||
 		len(req.CertificationIDs) > 0 ||
-		len(req.DescriptorIDs) > 0
+		len(req.DescriptorIDs) > 0 ||
+		len(req.CoreExpertiseIDs) > 0
 	if !hasContent {
 		return fmt.Errorf("at least one content item must be selected")
 	}
@@ -171,14 +182,14 @@ func (s *ResumeService) assembleRenderRequest(
 		return domain.RenderResumeRequest{}, fmt.Errorf("list profile links: %w", err)
 	}
 
-	// Fetch optional summary.
-	var summary *domain.ProfessionalSummary
-	if req.SummaryID != nil {
-		s, err := s.store.GetSummary(ctx, *req.SummaryID)
+	// Fetch summaries.
+	summaries := make([]domain.ProfessionalSummary, 0, len(req.SummaryIDs))
+	for _, sumID := range req.SummaryIDs {
+		sum, err := s.store.GetSummary(ctx, sumID)
 		if err != nil {
-			return domain.RenderResumeRequest{}, fmt.Errorf("get summary: %w", err)
+			return domain.RenderResumeRequest{}, fmt.Errorf("get summary %d: %w", sumID, err)
 		}
-		summary = &s
+		summaries = append(summaries, sum)
 	}
 
 	// Fetch and filter work history.
@@ -189,6 +200,12 @@ func (s *ResumeService) assembleRenderRequest(
 
 	// Fetch and filter skills, applying sort overrides.
 	skills, err := s.filterSkills(ctx, req.SkillIDs, req.SkillSortOverrides)
+	if err != nil {
+		return domain.RenderResumeRequest{}, err
+	}
+
+	// Build category name lookup for skill rendering.
+	skillCatNames, err := s.loadSkillCategoryNames(ctx)
 	if err != nil {
 		return domain.RenderResumeRequest{}, err
 	}
@@ -211,17 +228,26 @@ func (s *ResumeService) assembleRenderRequest(
 		return domain.RenderResumeRequest{}, err
 	}
 
+	// Fetch and filter core expertise (preserving request order).
+	coreExpertise, err := s.filterCoreExpertise(ctx, req.CoreExpertiseIDs)
+	if err != nil {
+		return domain.RenderResumeRequest{}, err
+	}
+
 	return domain.RenderResumeRequest{
-		TemplateID:  req.TemplateID,
-		OutputDir:   s.outputDir,
-		Profile:     profile,
-		Links:       links,
-		Summary:     summary,
-		WorkHistory: workHistory,
-		Skills:      skills,
-		Academics:   academics,
-		Certs:       certs,
-		Descriptors: descriptors,
+		TemplateID:         req.TemplateID,
+		OutputDir:          s.outputDir,
+		Profile:            profile,
+		Links:              links,
+		Summaries:          summaries,
+		MasterSummaryID:    req.MasterSummaryID,
+		WorkHistory:        workHistory,
+		Skills:             skills,
+		SkillCategoryNames: skillCatNames,
+		Academics:          academics,
+		Certs:              certs,
+		Descriptors:        descriptors,
+		CoreExpertise:      coreExpertise,
 	}, nil
 }
 
@@ -235,7 +261,7 @@ func (s *ResumeService) filterWorkHistory(
 	bulletIDs []int64,
 ) ([]domain.WorkHistoryEntry, error) {
 	if len(whIDs) == 0 {
-		return nil, nil
+		return []domain.WorkHistoryEntry{}, nil
 	}
 
 	allEntries, err := s.store.ListWorkHistory(ctx)
@@ -265,7 +291,7 @@ func (s *ResumeService) filterWorkHistory(
 
 		// Filter bullets if specific bullet IDs were provided.
 		if len(bulletIDs) > 0 {
-			var filtered []domain.AchievementBullet
+			filtered := make([]domain.AchievementBullet, 0)
 			for _, b := range entry.Bullets {
 				if bulletSet[b.ID] {
 					filtered = append(filtered, b)
@@ -290,7 +316,7 @@ func (s *ResumeService) filterSkills(
 	overrides map[int64]int,
 ) ([]domain.Skill, error) {
 	if len(skillIDs) == 0 {
-		return nil, nil
+		return []domain.Skill{}, nil
 	}
 
 	allSkills, err := s.store.ListSkills(ctx)
@@ -311,7 +337,7 @@ func (s *ResumeService) filterSkills(
 	}
 
 	// Collect selected skills preserving original list order.
-	var selected []domain.Skill
+	selected := make([]domain.Skill, 0)
 	for _, sk := range allSkills {
 		if selectedSet[sk.ID] {
 			selected = append(selected, sk)
@@ -348,6 +374,23 @@ func (s *ResumeService) filterSkills(
 	return selected, nil
 }
 
+// loadSkillCategoryNames fetches all skill categories and returns
+// a map from category ID to category name.
+func (s *ResumeService) loadSkillCategoryNames(
+	ctx context.Context,
+) (map[int64]string, error) {
+	cats, err := s.store.ListSkillCategories(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list skill categories: %w", err)
+	}
+
+	names := make(map[int64]string, len(cats))
+	for _, c := range cats {
+		names[c.ID] = c.Name
+	}
+	return names, nil
+}
+
 // filterAcademics fetches all academic credentials and keeps those
 // in the selected IDs, preserving request order.
 func (s *ResumeService) filterAcademics(
@@ -355,7 +398,7 @@ func (s *ResumeService) filterAcademics(
 	academicIDs []int64,
 ) ([]domain.AcademicCredential, error) {
 	if len(academicIDs) == 0 {
-		return nil, nil
+		return []domain.AcademicCredential{}, nil
 	}
 
 	all, err := s.store.ListAcademicCredentials(ctx)
@@ -385,7 +428,7 @@ func (s *ResumeService) filterCertifications(
 	certIDs []int64,
 ) ([]domain.Certification, error) {
 	if len(certIDs) == 0 {
-		return nil, nil
+		return []domain.Certification{}, nil
 	}
 
 	all, err := s.store.ListCertifications(ctx)
@@ -415,7 +458,7 @@ func (s *ResumeService) filterDescriptors(
 	descriptorIDs []int64,
 ) ([]domain.RoleDescriptor, error) {
 	if len(descriptorIDs) == 0 {
-		return nil, nil
+		return []domain.RoleDescriptor{}, nil
 	}
 
 	all, err := s.store.ListDescriptors(ctx)
@@ -432,6 +475,36 @@ func (s *ResumeService) filterDescriptors(
 	for _, id := range descriptorIDs {
 		if d, ok := byID[id]; ok {
 			result = append(result, d)
+		}
+	}
+
+	return result, nil
+}
+
+// filterCoreExpertise fetches all core expertise items and keeps
+// those in the selected IDs, preserving request order.
+func (s *ResumeService) filterCoreExpertise(
+	ctx context.Context,
+	coreExpertiseIDs []int64,
+) ([]domain.CoreExpertise, error) {
+	if len(coreExpertiseIDs) == 0 {
+		return []domain.CoreExpertise{}, nil
+	}
+
+	all, err := s.store.ListCoreExpertise(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list core expertise: %w", err)
+	}
+
+	byID := make(map[int64]domain.CoreExpertise, len(all))
+	for _, ce := range all {
+		byID[ce.ID] = ce
+	}
+
+	result := make([]domain.CoreExpertise, 0, len(coreExpertiseIDs))
+	for _, id := range coreExpertiseIDs {
+		if ce, ok := byID[id]; ok {
+			result = append(result, ce)
 		}
 	}
 

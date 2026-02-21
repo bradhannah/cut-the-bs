@@ -11,6 +11,8 @@
     updateCertification,
     deleteCertification,
     reorderCertifications,
+    checkAcademicLensReferences,
+    checkCertLensReferences,
     addToast,
     type AcademicCredential,
     type AcademicInput,
@@ -18,6 +20,8 @@
     type CertificationInput,
   } from "../services/api";
   import DragHandle from "../components/DragHandle.svelte";
+  import LoadingSpinner from "../components/LoadingSpinner.svelte";
+  import { formatDate } from "../services/dateFormat";
 
   // --- Academic State ---
   let academics: AcademicCredential[] = [];
@@ -41,6 +45,11 @@
   let certExpirationDate = "";
   let certNoExpiration = true;
 
+  // Delete confirmation state
+  let deleteConfirmAcademic: AcademicCredential | null = null;
+  let deleteConfirmCert: Certification | null = null;
+  let lensReferences: string[] = [];
+
   onMount(async () => {
     await Promise.all([loadAcademics(), loadCertifications()]);
   });
@@ -48,7 +57,7 @@
   async function loadAcademics(): Promise<void> {
     academicLoading = true;
     try {
-      academics = await listAcademicCredentials();
+      academics = (await listAcademicCredentials()) || [];
     } finally {
       academicLoading = false;
     }
@@ -57,7 +66,7 @@
   async function loadCertifications(): Promise<void> {
     certLoading = true;
     try {
-      certifications = await listCertifications();
+      certifications = (await listCertifications()) || [];
     } finally {
       certLoading = false;
     }
@@ -99,10 +108,10 @@
       date_granularity: acadDateGranularity,
     };
 
-    if (!input.institution || !input.credential_type || !input.field_of_study) {
+    if (!input.institution || !input.field_of_study) {
       addToast(
         "error",
-        "Institution, credential type, and field of study are required"
+        "Institution and field of study are required"
       );
       return;
     }
@@ -125,13 +134,30 @@
     }
   }
 
-  async function handleDeleteAcademic(id: number): Promise<void> {
+  async function confirmDeleteAcademic(cred: AcademicCredential): Promise<void> {
     try {
-      await deleteAcademicCredential(id);
+      lensReferences = (await checkAcademicLensReferences(cred.id)) || [];
+      deleteConfirmAcademic = cred;
+    } catch {
+      // Toast already shown
+    }
+  }
+
+  async function handleDeleteAcademic(): Promise<void> {
+    if (!deleteConfirmAcademic) return;
+    try {
+      await deleteAcademicCredential(deleteConfirmAcademic.id);
+      deleteConfirmAcademic = null;
+      lensReferences = [];
       await loadAcademics();
     } catch {
       // Toast already shown
     }
+  }
+
+  function cancelDeleteAcademic(): void {
+    deleteConfirmAcademic = null;
+    lensReferences = [];
   }
 
   async function handleAcademicReorder(orderedIDs: number[]): Promise<void> {
@@ -201,13 +227,30 @@
     }
   }
 
-  async function handleDeleteCert(id: number): Promise<void> {
+  async function confirmDeleteCert(cert: Certification): Promise<void> {
     try {
-      await deleteCertification(id);
+      lensReferences = (await checkCertLensReferences(cert.id)) || [];
+      deleteConfirmCert = cert;
+    } catch {
+      // Toast already shown
+    }
+  }
+
+  async function handleDeleteCert(): Promise<void> {
+    if (!deleteConfirmCert) return;
+    try {
+      await deleteCertification(deleteConfirmCert.id);
+      deleteConfirmCert = null;
+      lensReferences = [];
       await loadCertifications();
     } catch {
       // Toast already shown
     }
+  }
+
+  function cancelDeleteCert(): void {
+    deleteConfirmCert = null;
+    lensReferences = [];
   }
 
   async function handleCertReorder(orderedIDs: number[]): Promise<void> {
@@ -226,13 +269,6 @@
 
   function getCert(id: number): Certification {
     return certifications.find((c) => c.id === id) as Certification;
-  }
-
-  function formatDate(date: string, granularity: string): string {
-    if (!date) return "";
-    if (granularity === "year") return date.substring(0, 4);
-    if (granularity === "month") return date.substring(0, 7);
-    return date;
   }
 
   $: sortedAcademics = [...academics].sort(
@@ -333,8 +369,29 @@
       </div>
     {/if}
 
+    <!-- Academic Delete Confirmation -->
+    {#if deleteConfirmAcademic}
+      <div class="confirm-dialog">
+        <p>
+          Delete <strong>{deleteConfirmAcademic.credential_type ? `${deleteConfirmAcademic.credential_type} in ` : ""}{deleteConfirmAcademic.field_of_study}</strong> from {deleteConfirmAcademic.institution}?
+        </p>
+        {#if lensReferences.length > 0}
+          <p class="warn-text">
+            This credential is referenced by {lensReferences.length} lens{lensReferences.length !== 1 ? "es" : ""}:
+            {lensReferences.join(", ")}
+          </p>
+        {/if}
+        <div class="form-actions">
+          <button class="btn btn-danger-solid" on:click={handleDeleteAcademic}>
+            Delete
+          </button>
+          <button class="btn btn-cancel" on:click={cancelDeleteAcademic}>Cancel</button>
+        </div>
+      </div>
+    {/if}
+
     {#if academicLoading}
-      <p class="loading-message">Loading...</p>
+      <LoadingSpinner />
     {:else if sortedAcademics.length === 0}
       <div class="empty-state">
         <p>No academic credentials yet.</p>
@@ -353,7 +410,7 @@
           <div class="item-card">
             <div class="item-info">
               <span class="item-primary">
-                {cred.credential_type} in {cred.field_of_study}
+                {cred.credential_type ? `${cred.credential_type} in ` : ""}{cred.field_of_study}
               </span>
               <span class="item-secondary">
                 {cred.institution}
@@ -374,7 +431,7 @@
               </button>
               <button
                 class="btn btn-small btn-danger"
-                on:click={() => handleDeleteAcademic(cred.id)}
+                on:click={() => confirmDeleteAcademic(cred)}
               >
                 Delete
               </button>
@@ -456,8 +513,29 @@
       </div>
     {/if}
 
+    <!-- Cert Delete Confirmation -->
+    {#if deleteConfirmCert}
+      <div class="confirm-dialog">
+        <p>
+          Delete certification <strong>{deleteConfirmCert.name}</strong>?
+        </p>
+        {#if lensReferences.length > 0}
+          <p class="warn-text">
+            This certification is referenced by {lensReferences.length} lens{lensReferences.length !== 1 ? "es" : ""}:
+            {lensReferences.join(", ")}
+          </p>
+        {/if}
+        <div class="form-actions">
+          <button class="btn btn-danger-solid" on:click={handleDeleteCert}>
+            Delete
+          </button>
+          <button class="btn btn-cancel" on:click={cancelDeleteCert}>Cancel</button>
+        </div>
+      </div>
+    {/if}
+
     {#if certLoading}
-      <p class="loading-message">Loading...</p>
+      <LoadingSpinner />
     {:else if sortedCerts.length === 0}
       <div class="empty-state">
         <p>No certifications yet.</p>
@@ -485,9 +563,9 @@
               </div>
               <span class="item-secondary">
                 {cert.issuing_body}
-                &middot; Earned {cert.date_earned}
+                &middot; Earned {formatDate(cert.date_earned, "day")}
                 {#if cert.expiration_date}
-                  &middot; Expires {cert.expiration_date}
+                  &middot; Expires {formatDate(cert.expiration_date, "day")}
                 {/if}
               </span>
             </div>
@@ -500,7 +578,7 @@
               </button>
               <button
                 class="btn btn-small btn-danger"
-                on:click={() => handleDeleteCert(cert.id)}
+                on:click={() => confirmDeleteCert(cert)}
               >
                 Delete
               </button>
@@ -527,11 +605,6 @@
     color: #7a8a9a;
     font-size: 0.95rem;
     margin: 0 0 24px;
-  }
-
-  .loading-message {
-    color: #5a6a7a;
-    font-style: italic;
   }
 
   .empty-state {
@@ -689,6 +762,36 @@
   .btn-danger:hover {
     background-color: #3a2020;
     color: #e06060;
+  }
+
+  .btn-danger-solid {
+    background-color: #802020;
+    border-color: #a03030;
+    color: #e0e0e0;
+  }
+
+  .btn-danger-solid:hover {
+    background-color: #a03030;
+  }
+
+  /* --- Confirm Dialog --- */
+  .confirm-dialog {
+    background-color: #2a1a1a;
+    border: 1px solid #5a3030;
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+
+  .confirm-dialog p {
+    margin: 0 0 8px;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+  }
+
+  .warn-text {
+    color: #e0a060 !important;
+    font-size: 0.85rem !important;
   }
 
   /* --- Item List --- */

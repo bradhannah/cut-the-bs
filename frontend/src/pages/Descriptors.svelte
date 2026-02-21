@@ -6,10 +6,12 @@
     updateDescriptor,
     deleteDescriptor,
     reorderDescriptors,
+    checkDescriptorLensReferences,
     addToast,
     type RoleDescriptor,
   } from "../services/api";
   import DragHandle from "../components/DragHandle.svelte";
+  import LoadingSpinner from "../components/LoadingSpinner.svelte";
 
   let descriptors: RoleDescriptor[] = [];
   let loading = true;
@@ -22,6 +24,10 @@
   let inlineEditId: number | null = null;
   let inlineEditTitle = "";
 
+  // Delete confirmation state
+  let deleteConfirmDesc: RoleDescriptor | null = null;
+  let lensReferences: string[] = [];
+
   onMount(async () => {
     await loadDescriptors();
   });
@@ -29,7 +35,7 @@
   async function loadDescriptors(): Promise<void> {
     loading = true;
     try {
-      descriptors = await listDescriptors();
+      descriptors = (await listDescriptors()) || [];
     } finally {
       loading = false;
     }
@@ -88,13 +94,30 @@
     }
   }
 
-  async function handleDelete(id: number): Promise<void> {
+  async function confirmDelete(desc: RoleDescriptor): Promise<void> {
     try {
-      await deleteDescriptor(id);
+      lensReferences = (await checkDescriptorLensReferences(desc.id)) || [];
+      deleteConfirmDesc = desc;
+    } catch {
+      // Toast already shown
+    }
+  }
+
+  async function handleDelete(): Promise<void> {
+    if (!deleteConfirmDesc) return;
+    try {
+      await deleteDescriptor(deleteConfirmDesc.id);
+      deleteConfirmDesc = null;
+      lensReferences = [];
       await loadDescriptors();
     } catch {
       // Toast already shown
     }
+  }
+
+  function cancelDelete(): void {
+    deleteConfirmDesc = null;
+    lensReferences = [];
   }
 
   async function handleReorder(orderedIDs: number[]): Promise<void> {
@@ -158,8 +181,32 @@
     </div>
   {/if}
 
+  <!-- Delete Confirmation -->
+  {#if deleteConfirmDesc}
+    <div class="confirm-dialog">
+      <p>
+        Delete descriptor <strong>{deleteConfirmDesc.title}</strong>?
+      </p>
+      {#if lensReferences.length > 0}
+        <p class="warn-text">
+          This descriptor is referenced by {lensReferences.length} lens{lensReferences.length
+            !== 1
+            ? "es"
+            : ""}:
+          {lensReferences.join(", ")}
+        </p>
+      {/if}
+      <div class="form-actions">
+        <button class="btn btn-danger-solid" on:click={handleDelete}>
+          Delete
+        </button>
+        <button class="btn btn-cancel" on:click={cancelDelete}>Cancel</button>
+      </div>
+    </div>
+  {/if}
+
   {#if loading}
-    <p class="loading-message">Loading...</p>
+    <LoadingSpinner />
   {:else if sortedDescriptors.length === 0}
     <div class="empty-state">
       <p>No role descriptors yet.</p>
@@ -208,7 +255,7 @@
               </button>
               <button
                 class="btn btn-small btn-danger"
-                on:click={() => handleDelete(desc.id)}
+                on:click={() => confirmDelete(desc)}
               >
                 Delete
               </button>
@@ -242,11 +289,6 @@
     color: #7a8a9a;
     font-size: 0.95rem;
     margin: 0 0 24px;
-  }
-
-  .loading-message {
-    color: #5a6a7a;
-    font-style: italic;
   }
 
   .empty-state {
@@ -378,6 +420,36 @@
   .btn-danger:hover {
     background-color: #3a2020;
     color: #e06060;
+  }
+
+  .btn-danger-solid {
+    background-color: #802020;
+    border-color: #a03030;
+    color: #e0e0e0;
+  }
+
+  .btn-danger-solid:hover {
+    background-color: #a03030;
+  }
+
+  /* --- Confirm Dialog --- */
+  .confirm-dialog {
+    background-color: #2a1a1a;
+    border: 1px solid #5a3030;
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+
+  .confirm-dialog p {
+    margin: 0 0 8px;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+  }
+
+  .warn-text {
+    color: #e0a060 !important;
+    font-size: 0.85rem !important;
   }
 
   /* --- Descriptor Cards --- */

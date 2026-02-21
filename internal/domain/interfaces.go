@@ -68,8 +68,8 @@ type Store interface {
 	// --- Achievement Bullets ---
 
 	// CreateBullet adds an achievement bullet to a work history
-	// entry.
-	CreateBullet(ctx context.Context, workHistoryID int64, text string) (AchievementBullet, error)
+	// entry. bulletType must be BulletTypePrimary or BulletTypeSecondary.
+	CreateBullet(ctx context.Context, workHistoryID int64, text string, bulletType string) (AchievementBullet, error)
 
 	// UpdateBullet updates an achievement bullet's text.
 	UpdateBullet(ctx context.Context, id int64, text string) (AchievementBullet, error)
@@ -210,6 +210,25 @@ type Store interface {
 	// ReorderDescriptors updates sort_order for all descriptors.
 	ReorderDescriptors(ctx context.Context, orderedIDs []int64) error
 
+	// --- Core Expertise ---
+
+	// ListCoreExpertise returns all core expertise items ordered
+	// by sort_order.
+	ListCoreExpertise(ctx context.Context) ([]CoreExpertise, error)
+
+	// CreateCoreExpertise creates a new core expertise item.
+	CreateCoreExpertise(ctx context.Context, label string) (CoreExpertise, error)
+
+	// UpdateCoreExpertise updates a core expertise item's label.
+	UpdateCoreExpertise(ctx context.Context, id int64, label string) (CoreExpertise, error)
+
+	// DeleteCoreExpertise deletes a core expertise item by ID.
+	DeleteCoreExpertise(ctx context.Context, id int64) error
+
+	// ReorderCoreExpertise updates sort_order for all core
+	// expertise items.
+	ReorderCoreExpertise(ctx context.Context, orderedIDs []int64) error
+
 	// --- Lenses ---
 
 	// ListLenses returns all lenses.
@@ -222,11 +241,14 @@ type Store interface {
 	// CreateLens creates a new lens.
 	CreateLens(ctx context.Context, input LensInput) (Lens, error)
 
-	// UpdateLens updates a lens's name and summary selection.
+	// UpdateLens updates a lens's name.
 	UpdateLens(ctx context.Context, id int64, input LensInput) (Lens, error)
 
 	// DeleteLens deletes a lens and all its selections.
 	DeleteLens(ctx context.Context, id int64) error
+
+	// SetLensSummaries replaces the summary selections for a lens.
+	SetLensSummaries(ctx context.Context, lensID int64, selections []LensSummaryItem) error
 
 	// SetLensWorkHistory replaces the work history selections for
 	// a lens.
@@ -249,6 +271,40 @@ type Store interface {
 	// SetLensDescriptors replaces the descriptor selections for
 	// a lens.
 	SetLensDescriptors(ctx context.Context, lensID int64, selections []LensDescriptorItem) error
+
+	// SetLensCoreExpertise replaces the core expertise selections
+	// for a lens.
+	SetLensCoreExpertise(ctx context.Context, lensID int64, selections []LensCoreExpertiseItem) error
+
+	// --- Lens Reference Checks ---
+
+	// CheckSummaryLensReferences returns the names of lenses that
+	// reference a given professional summary.
+	CheckSummaryLensReferences(ctx context.Context, id int64) ([]string, error)
+
+	// CheckWorkHistoryLensReferences returns the names of lenses
+	// that reference a given work history entry.
+	CheckWorkHistoryLensReferences(ctx context.Context, id int64) ([]string, error)
+
+	// CheckBulletLensReferences returns the names of lenses that
+	// reference a given bullet.
+	CheckBulletLensReferences(ctx context.Context, id int64) ([]string, error)
+
+	// CheckAcademicLensReferences returns the names of lenses
+	// that reference a given academic credential.
+	CheckAcademicLensReferences(ctx context.Context, id int64) ([]string, error)
+
+	// CheckCertLensReferences returns the names of lenses that
+	// reference a given certification.
+	CheckCertLensReferences(ctx context.Context, id int64) ([]string, error)
+
+	// CheckDescriptorLensReferences returns the names of lenses
+	// that reference a given role descriptor.
+	CheckDescriptorLensReferences(ctx context.Context, id int64) ([]string, error)
+
+	// CheckCoreExpertiseLensReferences returns the names of lenses
+	// that reference a given core expertise item.
+	CheckCoreExpertiseLensReferences(ctx context.Context, id int64) ([]string, error)
 
 	// --- Resume Exports ---
 
@@ -319,6 +375,18 @@ type Store interface {
 
 	// --- Data Management ---
 
+	// ExportAllData returns all data in the database as a single
+	// ExportData envelope for JSON serialization.
+	ExportAllData(ctx context.Context) (ExportData, error)
+
+	// ImportAllData replaces all data with the contents of the
+	// provided ExportData. This truncates all tables and inserts
+	// fresh data inside a single transaction.
+	ImportAllData(ctx context.Context, data ExportData) error
+
+	// DBPath returns the path to the underlying database file.
+	DBPath() string
+
 	// Close closes the store and releases resources.
 	Close() error
 
@@ -343,16 +411,19 @@ type PDFRenderer interface {
 
 // RenderResumeRequest holds all data needed to render a resume PDF.
 type RenderResumeRequest struct {
-	TemplateID  string
-	OutputDir   string
-	Profile     UserProfile
-	Links       []ProfileLink
-	Summary     *ProfessionalSummary
-	WorkHistory []WorkHistoryEntry
-	Skills      []Skill
-	Academics   []AcademicCredential
-	Certs       []Certification
-	Descriptors []RoleDescriptor
+	TemplateID         string
+	OutputDir          string
+	Profile            UserProfile
+	Links              []ProfileLink
+	Summaries          []ProfessionalSummary
+	MasterSummaryID    *int64
+	WorkHistory        []WorkHistoryEntry
+	Skills             []Skill
+	SkillCategoryNames map[int64]string
+	Academics          []AcademicCredential
+	Certs              []Certification
+	Descriptors        []RoleDescriptor
+	CoreExpertise      []CoreExpertise
 }
 
 // RenderCoverLetterRequest holds all data needed to render a cover

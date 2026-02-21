@@ -3,9 +3,10 @@
   import { splitBulletText } from "../services/api";
 
   export let workHistoryId: number;
+  export let bulletType: string = "primary";
 
   const dispatch = createEventDispatcher<{
-    confirm: { workHistoryId: number; lines: string[] };
+    confirm: { workHistoryId: number; lines: string[]; bulletType: string };
     cancel: void;
   }>();
 
@@ -26,7 +27,7 @@
   }
 
   function handleConfirm(): void {
-    dispatch("confirm", { workHistoryId, lines: previewLines });
+    dispatch("confirm", { workHistoryId, lines: previewLines, bulletType });
   }
 
   function handleCancel(): void {
@@ -63,7 +64,9 @@
   tabindex="-1"
 >
   <div class="dialog">
-    <h3 class="dialog-title">Paste Multiple Bullets</h3>
+    <h3 class="dialog-title">
+      {bulletType === "secondary" ? "Paste Multiple Outcomes" : "Paste Multiple Bullets"}
+    </h3>
     <p class="dialog-description">
       Paste a block of text below. Each line will become a separate bullet.
     </p>

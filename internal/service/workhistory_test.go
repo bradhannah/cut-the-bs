@@ -21,7 +21,7 @@ type mockStore struct {
 	err            error
 	deleteErr      error
 	reorderErr     error
-	createBulletFn func(ctx context.Context, whID int64, text string) (domain.AchievementBullet, error)
+	createBulletFn func(ctx context.Context, whID int64, text string, bulletType string) (domain.AchievementBullet, error)
 
 	// --- call tracking ---
 	createCalls       []domain.WorkHistoryInput
@@ -42,6 +42,7 @@ type updateCall struct {
 type createBulletCall struct {
 	WorkHistoryID int64
 	Text          string
+	BulletType    string
 }
 
 type updateBulletCall struct {
@@ -91,10 +92,10 @@ func (m *mockStore) ReorderWorkHistory(_ context.Context, orderedIDs []int64) er
 	return m.reorderErr
 }
 
-func (m *mockStore) CreateBullet(ctx context.Context, workHistoryID int64, text string) (domain.AchievementBullet, error) {
-	m.createBulletCalls = append(m.createBulletCalls, createBulletCall{WorkHistoryID: workHistoryID, Text: text})
+func (m *mockStore) CreateBullet(ctx context.Context, workHistoryID int64, text string, bulletType string) (domain.AchievementBullet, error) {
+	m.createBulletCalls = append(m.createBulletCalls, createBulletCall{WorkHistoryID: workHistoryID, Text: text, BulletType: bulletType})
 	if m.createBulletFn != nil {
-		return m.createBulletFn(ctx, workHistoryID, text)
+		return m.createBulletFn(ctx, workHistoryID, text, bulletType)
 	}
 	if m.err != nil {
 		return domain.AchievementBullet{}, m.err
@@ -441,18 +442,19 @@ func TestCreateBullet_Success(t *testing.T) {
 	}
 	svc := NewWorkHistoryService(store)
 
-	bullet, err := svc.CreateBullet(context.Background(), 10, "Led project X")
+	bullet, err := svc.CreateBullet(context.Background(), 10, "Led project X", domain.BulletTypePrimary)
 	require.NoError(t, err)
 	assert.Equal(t, "Led project X", bullet.Text)
 	require.Len(t, store.createBulletCalls, 1)
 	assert.Equal(t, int64(10), store.createBulletCalls[0].WorkHistoryID)
+	assert.Equal(t, domain.BulletTypePrimary, store.createBulletCalls[0].BulletType)
 }
 
 func TestCreateBullet_EmptyText(t *testing.T) {
 	store := &mockStore{}
 	svc := NewWorkHistoryService(store)
 
-	_, err := svc.CreateBullet(context.Background(), 10, "")
+	_, err := svc.CreateBullet(context.Background(), 10, "", domain.BulletTypePrimary)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "text")
 	assert.Empty(t, store.createBulletCalls)
@@ -462,7 +464,7 @@ func TestCreateBullet_WhitespaceOnlyText(t *testing.T) {
 	store := &mockStore{}
 	svc := NewWorkHistoryService(store)
 
-	_, err := svc.CreateBullet(context.Background(), 10, "   \n\t  ")
+	_, err := svc.CreateBullet(context.Background(), 10, "   \n\t  ", domain.BulletTypePrimary)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "text")
 	assert.Empty(t, store.createBulletCalls)
@@ -608,4 +610,242 @@ func TestGetWorkHistory_NotFound(t *testing.T) {
 	_, err := svc.GetWorkHistory(context.Background(), 999)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
+}
+
+// =================================================================
+// Secondary Bullet — Service Layer Tests
+// =================================================================
+
+func TestCreateBullet_SecondaryType(t *testing.T) {
+	store := &mockStore{
+		bullet: domain.AchievementBullet{
+			ID:            1,
+			WorkHistoryID: 10,
+			Text:          "Increased revenue by 20%",
+			BulletType:    domain.BulletTypeSecondary,
+			SortOrder:     1,
+		},
+	}
+	svc := NewWorkHistoryService(store)
+
+	bullet, err := svc.CreateBullet(context.Background(), 10, "Increased revenue by 20%", domain.BulletTypeSecondary)
+	require.NoError(t, err)
+	assert.Equal(t, domain.BulletTypeSecondary, bullet.BulletType)
+	assert.Equal(t, "Increased revenue by 20%", bullet.Text)
+	require.Len(t, store.createBulletCalls, 1)
+	assert.Equal(t, domain.BulletTypeSecondary, store.createBulletCalls[0].BulletType)
+}
+
+func TestCreateBullet_EmptyBulletTypeDefaultsToPrimary(t *testing.T) {
+	store := &mockStore{
+		bullet: domain.AchievementBullet{
+			ID:            1,
+			WorkHistoryID: 10,
+			Text:          "Some task",
+			BulletType:    domain.BulletTypePrimary,
+			SortOrder:     1,
+		},
+	}
+	svc := NewWorkHistoryService(store)
+
+	_, err := svc.CreateBullet(context.Background(), 10, "Some task", "")
+	require.NoError(t, err)
+	require.Len(t, store.createBulletCalls, 1)
+	assert.Equal(t, domain.BulletTypePrimary, store.createBulletCalls[0].BulletType,
+		"empty bulletType should be defaulted to primary before store call")
+}
+
+func TestCreateBullet_SecondaryEmptyText(t *testing.T) {
+	store := &mockStore{}
+	svc := NewWorkHistoryService(store)
+
+	_, err := svc.CreateBullet(context.Background(), 10, "", domain.BulletTypeSecondary)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "text")
+	assert.Empty(t, store.createBulletCalls, "store should not be called with empty text")
+}
+
+func TestCreateBullet_SecondaryWhitespaceOnlyText(t *testing.T) {
+	store := &mockStore{}
+	svc := NewWorkHistoryService(store)
+
+	_, err := svc.CreateBullet(context.Background(), 10, "   \t\n  ", domain.BulletTypeSecondary)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "text")
+	assert.Empty(t, store.createBulletCalls)
+}
+
+func TestCreateBullet_StoreErrorWithSecondaryType(t *testing.T) {
+	store := &mockStore{err: fmt.Errorf("db connection lost")}
+	svc := NewWorkHistoryService(store)
+
+	_, err := svc.CreateBullet(context.Background(), 10, "Outcome text", domain.BulletTypeSecondary)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "db connection lost")
+}
+
+func TestCreateBullet_BulletTypePassedToStore(t *testing.T) {
+	var capturedType string
+	store := &mockStore{
+		createBulletFn: func(ctx context.Context, whID int64, text string, bulletType string) (domain.AchievementBullet, error) {
+			capturedType = bulletType
+			return domain.AchievementBullet{
+				ID:         1,
+				BulletType: bulletType,
+				Text:       text,
+			}, nil
+		},
+	}
+	svc := NewWorkHistoryService(store)
+
+	_, err := svc.CreateBullet(context.Background(), 10, "Outcome", domain.BulletTypeSecondary)
+	require.NoError(t, err)
+	assert.Equal(t, domain.BulletTypeSecondary, capturedType)
+}
+
+// =================================================================
+// Summary Field — Service Layer Tests
+// =================================================================
+
+func TestCreateWorkHistory_WithSummary(t *testing.T) {
+	store := &mockStore{
+		workHistory: domain.WorkHistoryEntry{
+			ID:                   1,
+			EmployerName:         "Acme Corp",
+			JobTitle:             "Senior Engineer",
+			Summary:              "Led the platform team.",
+			StartDate:            "2020-01",
+			DateGranularityStart: "month",
+			SortOrder:            1,
+		},
+	}
+	svc := NewWorkHistoryService(store)
+
+	input := validInput()
+	input.Summary = "Led the platform team."
+
+	entry, err := svc.CreateWorkHistory(context.Background(), input)
+	require.NoError(t, err)
+	assert.Equal(t, "Led the platform team.", entry.Summary)
+	require.Len(t, store.createCalls, 1)
+	assert.Equal(t, "Led the platform team.", store.createCalls[0].Summary)
+}
+
+func TestCreateWorkHistory_EmptySummaryIsValid(t *testing.T) {
+	store := &mockStore{
+		workHistory: domain.WorkHistoryEntry{
+			ID:                   1,
+			EmployerName:         "Acme Corp",
+			JobTitle:             "Engineer",
+			StartDate:            "2020-01",
+			DateGranularityStart: "month",
+			SortOrder:            1,
+		},
+	}
+	svc := NewWorkHistoryService(store)
+
+	input := validInput()
+	input.Summary = ""
+
+	entry, err := svc.CreateWorkHistory(context.Background(), input)
+	require.NoError(t, err)
+	assert.Empty(t, entry.Summary, "empty summary should be accepted")
+}
+
+func TestUpdateWorkHistory_WithSummary(t *testing.T) {
+	store := &mockStore{
+		workHistory: domain.WorkHistoryEntry{
+			ID:                   42,
+			EmployerName:         "Acme Corp",
+			JobTitle:             "Lead",
+			Summary:              "New summary text.",
+			StartDate:            "2019-06",
+			DateGranularityStart: "month",
+			SortOrder:            1,
+		},
+	}
+	svc := NewWorkHistoryService(store)
+
+	input := validInput()
+	input.Summary = "New summary text."
+
+	entry, err := svc.UpdateWorkHistory(context.Background(), 42, input)
+	require.NoError(t, err)
+	assert.Equal(t, "New summary text.", entry.Summary)
+	require.Len(t, store.updateCalls, 1)
+	assert.Equal(t, "New summary text.", store.updateCalls[0].Input.Summary)
+}
+
+func TestListWorkHistory_ReturnsSummaryField(t *testing.T) {
+	store := &mockStore{
+		workHistories: []domain.WorkHistoryEntry{
+			{ID: 1, EmployerName: "Acme", Summary: "Summary A", SortOrder: 1},
+			{ID: 2, EmployerName: "Beta", Summary: "", SortOrder: 2},
+		},
+	}
+	svc := NewWorkHistoryService(store)
+
+	entries, err := svc.ListWorkHistory(context.Background())
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+	assert.Equal(t, "Summary A", entries[0].Summary)
+	assert.Empty(t, entries[1].Summary)
+}
+
+func TestGetWorkHistory_ReturnsSummaryField(t *testing.T) {
+	store := &mockStore{
+		workHistory: domain.WorkHistoryEntry{
+			ID:           1,
+			EmployerName: "Acme Corp",
+			Summary:      "Platform leadership.",
+		},
+	}
+	svc := NewWorkHistoryService(store)
+
+	entry, err := svc.GetWorkHistory(context.Background(), 1)
+	require.NoError(t, err)
+	assert.Equal(t, "Platform leadership.", entry.Summary)
+}
+
+// =================================================================
+// Additional edge case tests
+// =================================================================
+
+func TestCreateBullet_PrimaryTypeExplicit(t *testing.T) {
+	store := &mockStore{
+		bullet: domain.AchievementBullet{
+			ID:            1,
+			WorkHistoryID: 10,
+			Text:          "Task text",
+			BulletType:    domain.BulletTypePrimary,
+			SortOrder:     1,
+		},
+	}
+	svc := NewWorkHistoryService(store)
+
+	bullet, err := svc.CreateBullet(context.Background(), 10, "Task text", domain.BulletTypePrimary)
+	require.NoError(t, err)
+	assert.Equal(t, domain.BulletTypePrimary, bullet.BulletType)
+	require.Len(t, store.createBulletCalls, 1)
+	assert.Equal(t, domain.BulletTypePrimary, store.createBulletCalls[0].BulletType)
+}
+
+func TestCreateBullet_MultipleCallsTracksBulletType(t *testing.T) {
+	store := &mockStore{
+		bullet: domain.AchievementBullet{ID: 1, WorkHistoryID: 10, Text: "text", SortOrder: 1},
+	}
+	svc := NewWorkHistoryService(store)
+
+	_, err := svc.CreateBullet(context.Background(), 10, "Primary bullet", domain.BulletTypePrimary)
+	require.NoError(t, err)
+	_, err = svc.CreateBullet(context.Background(), 10, "Secondary bullet", domain.BulletTypeSecondary)
+	require.NoError(t, err)
+	_, err = svc.CreateBullet(context.Background(), 10, "Default bullet", "")
+	require.NoError(t, err)
+
+	require.Len(t, store.createBulletCalls, 3)
+	assert.Equal(t, domain.BulletTypePrimary, store.createBulletCalls[0].BulletType)
+	assert.Equal(t, domain.BulletTypeSecondary, store.createBulletCalls[1].BulletType)
+	assert.Equal(t, domain.BulletTypePrimary, store.createBulletCalls[2].BulletType,
+		"empty bulletType should be normalized to primary before store call")
 }

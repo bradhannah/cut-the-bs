@@ -258,3 +258,29 @@ func TestValidateWorkHistoryInput_EndBeforeStart(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "end date")
 }
+
+// =================================================================
+// ValidateLensInput
+// =================================================================
+
+func TestValidateLensInput_Valid(t *testing.T) {
+	err := ValidateLensInput(LensInput{Name: "Backend Engineer"})
+	assert.NoError(t, err)
+}
+
+func TestValidateLensInput_EmptyName(t *testing.T) {
+	err := ValidateLensInput(LensInput{Name: ""})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "lens name")
+}
+
+func TestValidateLensInput_WhitespaceName(t *testing.T) {
+	err := ValidateLensInput(LensInput{Name: "   "})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "lens name")
+}
+
+func TestValidateLensInput_ValidName(t *testing.T) {
+	err := ValidateLensInput(LensInput{Name: "Frontend Dev"})
+	assert.NoError(t, err)
+}

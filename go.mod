@@ -1,10 +1,11 @@
 module cut-the-bs
 
-go 1.24.0
+go 1.24.1
 
 toolchain go1.24.2
 
 require (
+	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/signintech/gopdf v0.36.0
 	github.com/stretchr/testify v1.11.1
 	github.com/wailsapp/wails/v2 v2.11.0
