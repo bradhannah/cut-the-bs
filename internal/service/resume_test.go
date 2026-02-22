@@ -17,16 +17,19 @@ import (
 
 type mockExportStore struct {
 	// Return values
-	profile     domain.UserProfile
-	links       []domain.ProfileLink
-	summary     domain.ProfessionalSummary
-	workHistory []domain.WorkHistoryEntry
-	skills      []domain.Skill
-	academics   []domain.AcademicCredential
-	certs       []domain.Certification
-	descriptors []domain.RoleDescriptor
-	exports     []domain.ResumeExport
-	export      domain.ResumeExport
+	profile         domain.UserProfile
+	links           []domain.ProfileLink
+	summary         domain.ProfessionalSummary
+	workHistory     []domain.WorkHistoryEntry
+	skills          []domain.Skill
+	skillCategories []domain.SkillCategory
+	academics       []domain.AcademicCredential
+	certs           []domain.Certification
+	descriptors     []domain.RoleDescriptor
+	coreExpertise   []domain.CoreExpertise
+	exports         []domain.ResumeExport
+	export          domain.ResumeExport
+	templateDetail  domain.TemplateDetail
 
 	err error
 
@@ -34,6 +37,7 @@ type mockExportStore struct {
 	createExportCalls     []domain.ResumeExport
 	createSelectionsCalls []createSelectionsCall
 	getSummaryCalls       []int64
+	getTemplateCalls      []int64
 }
 
 type createSelectionsCall struct {
@@ -75,6 +79,22 @@ func (m *mockExportStore) ListCertifications(_ context.Context) ([]domain.Certif
 
 func (m *mockExportStore) ListDescriptors(_ context.Context) ([]domain.RoleDescriptor, error) {
 	return m.descriptors, m.err
+}
+
+func (m *mockExportStore) ListCoreExpertise(_ context.Context) ([]domain.CoreExpertise, error) {
+	return m.coreExpertise, m.err
+}
+
+func (m *mockExportStore) ListSkillCategories(_ context.Context) ([]domain.SkillCategory, error) {
+	return m.skillCategories, m.err
+}
+
+func (m *mockExportStore) GetDocumentTemplate(_ context.Context, id int64) (domain.TemplateDetail, error) {
+	m.getTemplateCalls = append(m.getTemplateCalls, id)
+	if m.err != nil {
+		return domain.TemplateDetail{}, m.err
+	}
+	return m.templateDetail, nil
 }
 
 func (m *mockExportStore) ListExports(_ context.Context) ([]domain.ResumeExport, error) {

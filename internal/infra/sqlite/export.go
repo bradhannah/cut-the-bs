@@ -15,12 +15,13 @@ func (s *Store) CreateExport(
 	export domain.ResumeExport,
 ) (domain.ResumeExport, error) {
 	query := `
-		INSERT INTO resume_export (template_id, file_path, summary_id, lens_id)
-		VALUES (?, ?, ?, ?)
+		INSERT INTO resume_export (template_id, template_ref_id, file_path, summary_id, lens_id)
+		VALUES (?, ?, ?, ?, ?)
 	`
 
 	result, err := s.db.ExecContext(ctx, query,
 		export.TemplateID,
+		export.TemplateRefID,
 		export.FilePath,
 		export.SummaryID,
 		export.LensID,
@@ -43,7 +44,7 @@ func (s *Store) GetExport(
 	id int64,
 ) (domain.ResumeExport, error) {
 	query := `
-		SELECT id, template_id, file_path, summary_id, lens_id, generated_at
+		SELECT id, template_id, template_ref_id, file_path, summary_id, lens_id, generated_at
 		FROM resume_export
 		WHERE id = ?
 	`
@@ -51,10 +52,12 @@ func (s *Store) GetExport(
 	var e domain.ResumeExport
 	var summaryID sql.NullInt64
 	var lensID sql.NullInt64
+	var templateRefID sql.NullInt64
 
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&e.ID,
 		&e.TemplateID,
+		&templateRefID,
 		&e.FilePath,
 		&summaryID,
 		&lensID,
@@ -73,6 +76,9 @@ func (s *Store) GetExport(
 	if lensID.Valid {
 		e.LensID = &lensID.Int64
 	}
+	if templateRefID.Valid {
+		e.TemplateRefID = &templateRefID.Int64
+	}
 
 	return e, nil
 }
@@ -83,7 +89,7 @@ func (s *Store) ListExports(
 	ctx context.Context,
 ) ([]domain.ResumeExport, error) {
 	query := `
-		SELECT id, template_id, file_path, summary_id, lens_id, generated_at
+		SELECT id, template_id, template_ref_id, file_path, summary_id, lens_id, generated_at
 		FROM resume_export
 		ORDER BY id DESC
 	`
@@ -99,10 +105,12 @@ func (s *Store) ListExports(
 		var e domain.ResumeExport
 		var summaryID sql.NullInt64
 		var lensID sql.NullInt64
+		var templateRefID sql.NullInt64
 
 		if err := rows.Scan(
 			&e.ID,
 			&e.TemplateID,
+			&templateRefID,
 			&e.FilePath,
 			&summaryID,
 			&lensID,
@@ -116,6 +124,9 @@ func (s *Store) ListExports(
 		}
 		if lensID.Valid {
 			e.LensID = &lensID.Int64
+		}
+		if templateRefID.Valid {
+			e.TemplateRefID = &templateRefID.Int64
 		}
 
 		exports = append(exports, e)

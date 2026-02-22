@@ -899,29 +899,29 @@ func migrateV7(store *Store) error {
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
 		 (1, 1, NULL, 'profile_header', '{"name_font_size":18.0,"detail_font_size":10.0,"alignment":"center","link_separator":" | ","show_links":true,"show_links_inline":false,"space_after":6.0}', 0)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (2, 1, NULL, 'role_descriptors', '{"font_size":10.0,"font_style":"regular","alignment":"center","separator":" | ","space_after":14.0}', 1)`,
+		 (2, 1, NULL, 'role_descriptors', '{"font_size":10.0,"font_style":"regular","alignment":"center","separator":" | ","space_after":4.0}', 1)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (3, 1, NULL, 'section_heading', '{"text":"PROFESSIONAL SUMMARY","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0}', 2)`,
+		 (3, 1, NULL, 'section_heading', '{"text":"Professional Summary","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0,"data_binding":"summaries"}', 2)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
 		 (4, 1, NULL, 'professional_summary', '{"font_size":10.0,"bullet_char":"\\u2022","space_before":0.0,"space_after":0.0}', 3)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (5, 1, NULL, 'section_heading', '{"text":"CORE EXPERTISE","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0}', 4)`,
+		 (5, 1, NULL, 'section_heading', '{"text":"Core Expertise","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0,"data_binding":"core_expertise"}', 4)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
 		 (6, 1, NULL, 'core_expertise', '{"font_size":10.0,"separator":" | ","alignment":"center","space_after":0.0}', 5)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (7, 1, NULL, 'section_heading', '{"text":"WORK EXPERIENCE","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0}', 6)`,
+		 (7, 1, NULL, 'section_heading', '{"text":"Experience","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0,"data_binding":"work_history"}', 6)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
 		 (8, 1, NULL, 'work_history_loop', '{"entry_gap":4.0,"space_before":0.0,"space_after":0.0}', 7)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (9, 1, NULL, 'section_heading', '{"text":"TECHNICAL SKILLS","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0}', 8)`,
+		 (9, 1, NULL, 'section_heading', '{"text":"Skills","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0,"data_binding":"skills"}', 8)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
 		 (10, 1, NULL, 'skills', '{"font_size":10.0,"group_by_category":true,"include_legacy":true,"legacy_suffix":" (Legacy)","category_font_style":"bold","skill_separator":", "}', 9)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (11, 1, NULL, 'section_heading', '{"text":"EDUCATION","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0}', 10)`,
+		 (11, 1, NULL, 'section_heading', '{"text":"Education","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0,"data_binding":"academics"}', 10)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
 		 (12, 1, NULL, 'education_loop', '{"entry_gap":0.0,"space_before":0.0,"space_after":0.0}', 11)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (13, 1, NULL, 'section_heading', '{"text":"CERTIFICATIONS","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0}', 12)`,
+		 (13, 1, NULL, 'section_heading', '{"text":"Certifications","font_size":12.0,"font_style":"bold","uppercase":true,"underline":true,"underline_weight":0.5,"space_before":10.0,"space_after":4.0,"data_binding":"certifications"}', 12)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
 		 (14, 1, NULL, 'certifications_loop', '{"entry_gap":0.0,"space_before":0.0,"space_after":0.0}', 13)`,
 
@@ -960,45 +960,45 @@ func migrateV7(store *Store) error {
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
 		 (25, 2, NULL, 'profile_header', '{"name_font_size":22.0,"detail_font_size":9.0,"alignment":"left","link_separator":"  \\u00B7  ","show_links":true,"show_links_inline":true,"space_after":6.0}', 0)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (26, 2, NULL, 'horizontal_rule', '{"weight":0.3,"space_before":0.0,"space_after":6.0}', 1)`,
+		 (26, 2, NULL, 'role_descriptors', '{"font_size":10.0,"font_style":"italic","alignment":"left","separator":"  \\u00B7  ","space_after":6.0}', 1)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (27, 2, NULL, 'role_descriptors', '{"font_size":10.0,"font_style":"italic","alignment":"left","separator":"  \\u00B7  ","space_after":14.0}', 2)`,
+		 (27, 2, NULL, 'horizontal_rule', '{"weight":0.3,"space_before":0.0,"space_after":6.0}', 2)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (28, 2, NULL, 'section_heading', '{"text":"PROFESSIONAL SUMMARY","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":4.0}', 3)`,
+		 (28, 2, NULL, 'section_heading', '{"text":"Summary","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":6.0,"data_binding":"summaries"}', 3)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
 		 (29, 2, NULL, 'professional_summary', '{"font_size":10.0,"bullet_char":"\\u2022","space_before":0.0,"space_after":0.0}', 4)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (30, 2, NULL, 'section_heading', '{"text":"CORE EXPERTISE","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":4.0}', 5)`,
+		 (30, 2, NULL, 'section_heading', '{"text":"Experience","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":6.0,"data_binding":"work_history"}', 5)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (31, 2, NULL, 'core_expertise', '{"font_size":10.0,"separator":" | ","alignment":"left","space_after":0.0}', 6)`,
+		 (31, 2, NULL, 'work_history_loop', '{"entry_gap":6.0,"space_before":0.0,"space_after":0.0}', 6)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (32, 2, NULL, 'section_heading', '{"text":"WORK EXPERIENCE","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":4.0}', 7)`,
+		 (32, 2, NULL, 'section_heading', '{"text":"Skills","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":6.0,"data_binding":"skills"}', 7)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (33, 2, NULL, 'work_history_loop', '{"entry_gap":6.0,"space_before":0.0,"space_after":0.0}', 8)`,
+		 (33, 2, NULL, 'skills', '{"font_size":10.0,"group_by_category":true,"include_legacy":true,"legacy_suffix":" (Legacy)","category_font_style":"bold","skill_separator":", "}', 8)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (34, 2, NULL, 'section_heading', '{"text":"TECHNICAL SKILLS","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":4.0}', 9)`,
+		 (34, 2, NULL, 'section_heading', '{"text":"Core Expertise","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":6.0,"data_binding":"core_expertise"}', 9)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (35, 2, NULL, 'skills', '{"font_size":10.0,"group_by_category":true,"include_legacy":true,"legacy_suffix":" (Legacy)","category_font_style":"bold","skill_separator":", "}', 10)`,
+		 (35, 2, NULL, 'core_expertise', '{"font_size":10.0,"separator":" | ","alignment":"left","space_after":0.0}', 10)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (36, 2, NULL, 'section_heading', '{"text":"EDUCATION","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":4.0}', 11)`,
+		 (36, 2, NULL, 'section_heading', '{"text":"Education","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":6.0,"data_binding":"academics"}', 11)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
 		 (37, 2, NULL, 'education_loop', '{"entry_gap":0.0,"space_before":0.0,"space_after":0.0}', 12)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (38, 2, NULL, 'section_heading', '{"text":"CERTIFICATIONS","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":4.0}', 13)`,
+		 (38, 2, NULL, 'section_heading', '{"text":"Certifications","font_size":11.0,"font_style":"bold","uppercase":true,"underline":false,"underline_weight":0.0,"space_before":14.0,"space_after":6.0,"data_binding":"certifications"}', 13)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
 		 (39, 2, NULL, 'certifications_loop', '{"entry_gap":0.0,"space_before":0.0,"space_after":0.0}', 14)`,
 
 		// Modern work_history_loop children
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (40, 2, 33, 'work_title', '{"font_size":10.0,"font_style":"bold","include_employer":true,"employer_separator":", ","employer_font_style":"bold","space_after":13.0}', 0)`,
+		 (40, 2, 31, 'work_title', '{"font_size":10.0,"font_style":"bold","include_employer":true,"employer_separator":", ","employer_font_style":"bold","space_after":15.0}', 0)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (41, 2, 33, 'work_dates', '{"font_size":9.0,"alignment":"right"}', 1)`,
+		 (41, 2, 31, 'work_dates', '{"font_size":9.0,"alignment":"right"}', 1)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (42, 2, 33, 'work_summary', '{}', 2)`,
+		 (42, 2, 31, 'work_summary', '{}', 2)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (43, 2, 33, 'work_bullets', '{"font_size":10.0,"font_style":"regular","bullet_char":"\\u2022","indent":12.0,"bullet_sym_width":10.0}', 3)`,
+		 (43, 2, 31, 'work_bullets', '{"font_size":10.0,"font_style":"regular","bullet_char":"\\u2022","indent":12.0,"bullet_sym_width":10.0}', 3)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (44, 2, 33, 'work_outcomes', '{"font_size":10.0,"font_style":"regular","bullet_char":"\\u2022","indent":12.0,"bullet_sym_width":10.0,"outcomes_label":"Outcomes:","outcomes_gap":2.0}', 4)`,
+		 (44, 2, 31, 'work_outcomes', '{"font_size":10.0,"font_style":"regular","bullet_char":"\\u2022","indent":12.0,"bullet_sym_width":10.0,"outcomes_label":"Outcomes:","outcomes_gap":2.0}', 4)`,
 
 		// Modern education_loop children
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES

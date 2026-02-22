@@ -81,7 +81,9 @@ func (r *Renderer) ListTemplates() []domain.ResumeTemplate {
 }
 
 // RenderResume generates a PDF resume from the given data using the
-// specified template. Returns the file path of the generated PDF.
+// template embedded in req.Template. The template provides page
+// margins and an ordered list of elements dispatched through the
+// element rendering pipeline. Returns the file path of the generated PDF.
 func (r *Renderer) RenderResume(
 	_ context.Context,
 	req domain.RenderResumeRequest,
@@ -90,10 +92,11 @@ func (r *Renderer) RenderResume(
 		return "", fmt.Errorf("output directory is required")
 	}
 
-	tmplFn, ok := r.templates[req.TemplateID]
-	if !ok {
-		return "", fmt.Errorf("unknown template: %q", req.TemplateID)
+	if req.Template == nil {
+		return "", fmt.Errorf("template is required")
 	}
+
+	tmpl := *req.Template
 
 	pdf := &gopdf.GoPdf{}
 	pdf.Start(gopdf.Config{
@@ -107,13 +110,14 @@ func (r *Renderer) RenderResume(
 
 	pdf.AddPage()
 
-	if err := tmplFn(pdf, req); err != nil {
-		return "", fmt.Errorf("render template %q: %w", req.TemplateID, err)
+	rc := newRenderContext(pdf, req, tmpl)
+	if err := renderElements(rc); err != nil {
+		return "", fmt.Errorf("render template %q: %w", tmpl.Name, err)
 	}
 
 	// Generate filename with timestamp.
 	ts := time.Now().Format("20060102-150405")
-	filename := fmt.Sprintf("resume-%s-%s.pdf", req.TemplateID, ts)
+	filename := fmt.Sprintf("resume-%s-%s.pdf", strings.ToLower(tmpl.Name), ts)
 	outPath := filepath.Join(req.OutputDir, filename)
 
 	if err := pdf.WritePdf(outPath); err != nil {
@@ -121,6 +125,36 @@ func (r *Renderer) RenderResume(
 	}
 
 	return outPath, nil
+}
+
+// renderResumeToBytes is an internal helper that renders a resume
+// template to a byte slice without writing to disk. Used by the
+// hardcoded template path for backward compatibility in tests.
+func (r *Renderer) renderResumeToBytes(
+	tmplName string,
+	req domain.RenderResumeRequest,
+) ([]byte, error) {
+	tmplFn, ok := r.templates[tmplName]
+	if !ok {
+		return nil, fmt.Errorf("unknown template: %q", tmplName)
+	}
+
+	pdf := &gopdf.GoPdf{}
+	pdf.Start(gopdf.Config{
+		PageSize: *gopdf.PageSizeLetter,
+	})
+
+	if err := registerFonts(pdf); err != nil {
+		return nil, fmt.Errorf("register fonts: %w", err)
+	}
+
+	pdf.AddPage()
+
+	if err := tmplFn(pdf, req); err != nil {
+		return nil, fmt.Errorf("render template %q: %w", tmplName, err)
+	}
+
+	return pdf.GetBytesPdfReturnErr()
 }
 
 // RenderCoverLetter generates a PDF cover letter.

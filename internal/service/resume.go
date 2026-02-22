@@ -26,6 +26,9 @@ type ExportStore interface {
 	ListDescriptors(ctx context.Context) ([]domain.RoleDescriptor, error)
 	ListCoreExpertise(ctx context.Context) ([]domain.CoreExpertise, error)
 
+	// Templates
+	GetDocumentTemplate(ctx context.Context, id int64) (domain.TemplateDetail, error)
+
 	// Export records
 	ListExports(ctx context.Context) ([]domain.ResumeExport, error)
 	CreateExport(ctx context.Context, export domain.ResumeExport) (domain.ResumeExport, error)
@@ -128,11 +131,19 @@ func (s *ResumeService) CreateExport(
 		snapshotSummaryID = &sid
 	}
 
+	// Load the template to get its name for the historical export record.
+	tmpl, err := s.store.GetDocumentTemplate(ctx, req.TemplateID)
+	if err != nil {
+		return domain.ResumeExport{}, fmt.Errorf("get template: %w", err)
+	}
+
+	templateRefID := req.TemplateID
 	export, err := s.store.CreateExport(ctx, domain.ResumeExport{
-		TemplateID: req.TemplateID,
-		FilePath:   filePath,
-		SummaryID:  snapshotSummaryID,
-		LensID:     req.LensID,
+		TemplateID:    tmpl.Name,
+		TemplateRefID: &templateRefID,
+		FilePath:      filePath,
+		SummaryID:     snapshotSummaryID,
+		LensID:        req.LensID,
 	})
 	if err != nil {
 		return domain.ResumeExport{}, fmt.Errorf("create export record: %w", err)
@@ -148,7 +159,7 @@ func (s *ResumeService) CreateExport(
 // validateExportRequest checks that the export request has at least
 // one content item selected and a template ID.
 func validateExportRequest(req domain.ExportRequest) error {
-	if req.TemplateID == "" {
+	if req.TemplateID == 0 {
 		return fmt.Errorf("template ID is required")
 	}
 
@@ -234,8 +245,14 @@ func (s *ResumeService) assembleRenderRequest(
 		return domain.RenderResumeRequest{}, err
 	}
 
+	// Load the document template for rendering.
+	tmpl, err := s.store.GetDocumentTemplate(ctx, req.TemplateID)
+	if err != nil {
+		return domain.RenderResumeRequest{}, fmt.Errorf("get template: %w", err)
+	}
+
 	return domain.RenderResumeRequest{
-		TemplateID:         req.TemplateID,
+		Template:           &tmpl,
 		OutputDir:          s.outputDir,
 		Profile:            profile,
 		Links:              links,

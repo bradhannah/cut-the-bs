@@ -452,7 +452,7 @@ type PDFRenderer interface {
 
 // RenderResumeRequest holds all data needed to render a resume PDF.
 type RenderResumeRequest struct {
-	TemplateID         string
+	Template           *TemplateDetail
 	OutputDir          string
 	Profile            UserProfile
 	Links              []ProfileLink

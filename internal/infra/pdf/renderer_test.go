@@ -9,6 +9,7 @@ import (
 
 	"cut-the-bs/internal/domain"
 
+	"github.com/signintech/gopdf"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,9 +17,10 @@ import (
 // fullTestData returns a complete RenderResumeRequest with all
 // sections populated, for testing the full rendering path.
 func fullTestData(outputDir string) domain.RenderResumeRequest {
+	tmpl := ProfessionalTemplate()
 	return domain.RenderResumeRequest{
-		TemplateID: "professional",
-		OutputDir:  outputDir,
+		Template:  &tmpl,
+		OutputDir: outputDir,
 		Profile: domain.UserProfile{
 			ID:       1,
 			FullName: "Jane Smith",
@@ -107,9 +109,10 @@ func fullTestData(outputDir string) domain.RenderResumeRequest {
 // minimalTestData returns a RenderResumeRequest with only the
 // minimum required data: profile name and email, one work entry.
 func minimalTestData(outputDir string) domain.RenderResumeRequest {
+	tmpl := ProfessionalTemplate()
 	return domain.RenderResumeRequest{
-		TemplateID: "professional",
-		OutputDir:  outputDir,
+		Template:  &tmpl,
+		OutputDir: outputDir,
 		Profile: domain.UserProfile{
 			ID:       1,
 			FullName: "John Doe",
@@ -170,7 +173,8 @@ func TestRenderer_RenderResume_ModernTemplate(t *testing.T) {
 	r := NewRenderer()
 
 	req := fullTestData(dir)
-	req.TemplateID = "modern"
+	modernTmpl := ModernTemplate()
+	req.Template = &modernTmpl
 
 	path, err := r.RenderResume(context.Background(), req)
 	require.NoError(t, err, "RenderResume should not error with modern template")
@@ -180,16 +184,16 @@ func TestRenderer_RenderResume_ModernTemplate(t *testing.T) {
 	assert.Greater(t, info.Size(), int64(0), "PDF file should be non-empty")
 }
 
-func TestRenderer_RenderResume_UnknownTemplate(t *testing.T) {
+func TestRenderer_RenderResume_NilTemplate(t *testing.T) {
 	dir := t.TempDir()
 	r := NewRenderer()
 
 	req := fullTestData(dir)
-	req.TemplateID = "nonexistent"
+	req.Template = nil
 
 	_, err := r.RenderResume(context.Background(), req)
-	assert.Error(t, err, "should reject unknown template ID")
-	assert.Contains(t, err.Error(), "nonexistent")
+	assert.Error(t, err, "should reject nil template")
+	assert.Contains(t, err.Error(), "template is required")
 }
 
 func TestRenderer_RenderResume_EmptyOutputDir(t *testing.T) {
@@ -336,14 +340,16 @@ func TestRenderer_RenderResume_BothTemplatesProduceDifferentFiles(t *testing.T) 
 	r := NewRenderer()
 
 	req1 := fullTestData(dir)
-	req1.TemplateID = "professional"
+	profTmpl := ProfessionalTemplate()
+	req1.Template = &profTmpl
 
 	// Use a separate subdir to avoid filename collision.
 	dir2 := filepath.Join(dir, "modern")
 	require.NoError(t, os.MkdirAll(dir2, 0o755))
 
 	req2 := fullTestData(dir2)
-	req2.TemplateID = "modern"
+	modernTmpl := ModernTemplate()
+	req2.Template = &modernTmpl
 
 	path1, err := r.RenderResume(context.Background(), req1)
 	require.NoError(t, err)
@@ -522,4 +528,197 @@ func TestRenderer_ListTemplates(t *testing.T) {
 		assert.False(t, ids[tmpl.ID], "template IDs should be unique")
 		ids[tmpl.ID] = true
 	}
+}
+
+// =================================================================
+// Fidelity Tests (T016, T017)
+// =================================================================
+
+// renderHardcoded renders a resume using the old hardcoded template
+// function and returns the raw PDF bytes. It mirrors the RenderResume
+// method logic but uses GetBytesPdfReturnErr instead of WritePdf.
+func renderHardcoded(t *testing.T, tmplID string, req domain.RenderResumeRequest) []byte {
+	t.Helper()
+
+	r := NewRenderer()
+	tmplFn, ok := r.templates[tmplID]
+	require.True(t, ok, "template %q must exist", tmplID)
+
+	pdf := &gopdf.GoPdf{}
+	pdf.Start(gopdf.Config{
+		PageSize: *gopdf.PageSizeLetter,
+	})
+	require.NoError(t, registerFonts(pdf))
+	pdf.AddPage()
+
+	require.NoError(t, tmplFn(pdf, req))
+
+	data, err := pdf.GetBytesPdfReturnErr()
+	require.NoError(t, err)
+	return data
+}
+
+// renderTemplated renders a resume using the new template-driven
+// element pipeline and returns the raw PDF bytes.
+func renderTemplated(t *testing.T, tmpl domain.TemplateDetail, req domain.RenderResumeRequest) []byte {
+	t.Helper()
+
+	pdf := &gopdf.GoPdf{}
+	pdf.Start(gopdf.Config{
+		PageSize: *gopdf.PageSizeLetter,
+	})
+	require.NoError(t, registerFonts(pdf))
+	pdf.AddPage()
+
+	rc := newRenderContext(pdf, req, tmpl)
+	require.NoError(t, renderElements(rc))
+
+	data, err := pdf.GetBytesPdfReturnErr()
+	require.NoError(t, err)
+	return data
+}
+
+// fullTestDataWithCoreExpertise extends fullTestData with core
+// expertise items and skill category names, exercising all sections.
+func fullTestDataWithCoreExpertise(outputDir string) domain.RenderResumeRequest {
+	req := fullTestData(outputDir)
+	req.MasterSummaryID = int64Ptr(1)
+	req.CoreExpertise = []domain.CoreExpertise{
+		{ID: 1, Label: "Distributed Systems", SortOrder: 0},
+		{ID: 2, Label: "API Design", SortOrder: 1},
+		{ID: 3, Label: "Cloud Architecture", SortOrder: 2},
+	}
+	req.SkillCategoryNames = map[int64]string{
+		1: "Languages",
+		2: "Databases",
+		3: "Infrastructure",
+	}
+	return req
+}
+
+// TestRenderer_Fidelity_Professional (T016) verifies that the
+// template-driven pipeline produces byte-identical output to the
+// hardcoded renderProfessional function.
+func TestRenderer_Fidelity_Professional(t *testing.T) {
+	req := fullTestDataWithCoreExpertise("")
+	tmpl := ProfessionalTemplate()
+
+	hardcoded := renderHardcoded(t, "professional", req)
+	templated := renderTemplated(t, tmpl, req)
+
+	if !assert.Equal(t, hardcoded, templated,
+		"template-driven Professional output must be byte-identical to hardcoded") {
+		// Write both files for manual inspection on failure.
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, "hardcoded.pdf"), hardcoded, 0o644)
+		os.WriteFile(filepath.Join(dir, "templated.pdf"), templated, 0o644)
+		t.Logf("PDFs written to %s for inspection", dir)
+		t.Logf("hardcoded size: %d bytes, templated size: %d bytes",
+			len(hardcoded), len(templated))
+	}
+}
+
+// TestRenderer_Fidelity_Modern (T017) verifies that the template-driven
+// pipeline produces byte-identical output to the hardcoded renderModern
+// function.
+func TestRenderer_Fidelity_Modern(t *testing.T) {
+	req := fullTestDataWithCoreExpertise("")
+	tmpl := ModernTemplate()
+
+	hardcoded := renderHardcoded(t, "modern", req)
+	templated := renderTemplated(t, tmpl, req)
+
+	if !assert.Equal(t, hardcoded, templated,
+		"template-driven Modern output must be byte-identical to hardcoded") {
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, "hardcoded.pdf"), hardcoded, 0o644)
+		os.WriteFile(filepath.Join(dir, "templated.pdf"), templated, 0o644)
+		t.Logf("PDFs written to %s for inspection", dir)
+		t.Logf("hardcoded size: %d bytes, templated size: %d bytes",
+			len(hardcoded), len(templated))
+	}
+}
+
+// TestRenderer_Fidelity_Professional_MinimalData tests that
+// minimal data also produces identical output between pipelines.
+func TestRenderer_Fidelity_Professional_MinimalData(t *testing.T) {
+	req := minimalTestData("")
+	tmpl := ProfessionalTemplate()
+
+	hardcoded := renderHardcoded(t, "professional", req)
+	templated := renderTemplated(t, tmpl, req)
+
+	if !assert.Equal(t, hardcoded, templated,
+		"minimal-data Professional output must be byte-identical") {
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, "hardcoded.pdf"), hardcoded, 0o644)
+		os.WriteFile(filepath.Join(dir, "templated.pdf"), templated, 0o644)
+		t.Logf("PDFs written to %s for inspection", dir)
+		t.Logf("hardcoded size: %d bytes, templated size: %d bytes",
+			len(hardcoded), len(templated))
+	}
+}
+
+// TestRenderer_Fidelity_Modern_MinimalData tests minimal data
+// through the Modern template pipeline.
+func TestRenderer_Fidelity_Modern_MinimalData(t *testing.T) {
+	req := minimalTestData("")
+	tmpl := ModernTemplate()
+
+	hardcoded := renderHardcoded(t, "modern", req)
+	templated := renderTemplated(t, tmpl, req)
+
+	if !assert.Equal(t, hardcoded, templated,
+		"minimal-data Modern output must be byte-identical") {
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, "hardcoded.pdf"), hardcoded, 0o644)
+		os.WriteFile(filepath.Join(dir, "templated.pdf"), templated, 0o644)
+		t.Logf("PDFs written to %s for inspection", dir)
+		t.Logf("hardcoded size: %d bytes, templated size: %d bytes",
+			len(hardcoded), len(templated))
+	}
+}
+
+// TestRenderer_Fidelity_Professional_WithSecondaryBullets tests
+// the outcomes block rendering with secondary bullets.
+func TestRenderer_Fidelity_Professional_WithSecondaryBullets(t *testing.T) {
+	req := fullTestDataWithCoreExpertise("")
+	// Add secondary (outcome) bullets to the first work entry.
+	req.WorkHistory[0].Bullets = append(req.WorkHistory[0].Bullets,
+		domain.AchievementBullet{
+			ID:            100,
+			WorkHistoryID: 1,
+			Text:          "Achieved 99.99% uptime SLA across all production services",
+			BulletType:    domain.BulletTypeSecondary,
+			SortOrder:     3,
+		},
+		domain.AchievementBullet{
+			ID:            101,
+			WorkHistoryID: 1,
+			Text:          "Reduced mean time to recovery from 4 hours to 15 minutes",
+			BulletType:    domain.BulletTypeSecondary,
+			SortOrder:     4,
+		},
+	)
+	tmpl := ProfessionalTemplate()
+
+	hardcoded := renderHardcoded(t, "professional", req)
+	templated := renderTemplated(t, tmpl, req)
+
+	assert.Equal(t, hardcoded, templated,
+		"Professional with secondary bullets must be byte-identical")
+}
+
+// TestRenderer_Fidelity_Professional_WithWorkSummary tests
+// the work entry summary rendering.
+func TestRenderer_Fidelity_Professional_WithWorkSummary(t *testing.T) {
+	req := fullTestDataWithCoreExpertise("")
+	req.WorkHistory[0].Summary = "Led the platform engineering team responsible for core infrastructure and developer tooling."
+	tmpl := ProfessionalTemplate()
+
+	hardcoded := renderHardcoded(t, "professional", req)
+	templated := renderTemplated(t, tmpl, req)
+
+	assert.Equal(t, hardcoded, templated,
+		"Professional with work summary must be byte-identical")
 }

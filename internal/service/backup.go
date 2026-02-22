@@ -17,7 +17,7 @@ import (
 
 // SchemaVersion is the current export schema version. Import will
 // reject files with a different version to prevent data corruption.
-const SchemaVersion = 6
+const SchemaVersion = 7
 
 // BackupStore defines the persistence operations required by
 // BackupService. This is a narrow subset of domain.Store.

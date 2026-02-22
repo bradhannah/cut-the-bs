@@ -239,8 +239,9 @@ func TestWorkflow_GenerateResume(t *testing.T) {
 	renderer := pdf.NewRenderer()
 	outputDir := t.TempDir()
 
+	profTmpl2 := pdf.ProfessionalTemplate()
 	pdfPath, err := renderer.RenderResume(ctx, domain.RenderResumeRequest{
-		TemplateID:  "professional",
+		Template:    &profTmpl2,
 		OutputDir:   outputDir,
 		Profile:     profile,
 		Links:       []domain.ProfileLink{link},
@@ -417,7 +418,7 @@ func TestWorkflow_JSONExportImportRoundtrip(t *testing.T) {
 	var exported domain.ExportData
 	require.NoError(t, json.Unmarshal(jsonData, &exported))
 
-	assert.Equal(t, 6, exported.SchemaVersion)
+	assert.Equal(t, 7, exported.SchemaVersion)
 	assert.NotEmpty(t, exported.ExportedAt)
 	assert.Equal(t, "Jane Smith", exported.Profile.FullName)
 	assert.Len(t, exported.ProfileLinks, 1)
@@ -595,14 +596,15 @@ func TestWorkflow_FullEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 
 	outputDir := t.TempDir()
+	profTmpl := pdf.ProfessionalTemplate()
 	pdfPath, err := renderer.RenderResume(ctx, domain.RenderResumeRequest{
-		TemplateID:  "professional",
+		Template:    &profTmpl,
 		OutputDir:   outputDir,
 		Profile:     profile,
 		Links:       []domain.ProfileLink{link},
 		Summaries:   []domain.ProfessionalSummary{summary},
 		WorkHistory: workList,
-		Skills:      []domain.Skill{goSkill, pySkill},
+		Skills:      []domain.Skill{goSkill},
 		Academics:   []domain.AcademicCredential{academic},
 		Certs:       []domain.Certification{cert},
 		Descriptors: []domain.RoleDescriptor{desc},
@@ -613,7 +615,7 @@ func TestWorkflow_FullEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	assert.Greater(t, info.Size(), int64(0))
 
-	// Step 8: Record export and create application.
+	// Record the export.
 	export, err := store.CreateExport(ctx, domain.ResumeExport{
 		TemplateID: "professional",
 		FilePath:   pdfPath,

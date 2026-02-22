@@ -275,12 +275,13 @@ type LensCoreExpertiseItem struct {
 // ResumeExport is a generated PDF artifact with a snapshot of
 // what data was selected.
 type ResumeExport struct {
-	ID          int64  `json:"id"`
-	TemplateID  string `json:"template_id"`
-	FilePath    string `json:"file_path"`
-	SummaryID   *int64 `json:"summary_id"`
-	LensID      *int64 `json:"lens_id"`
-	GeneratedAt string `json:"generated_at"`
+	ID            int64  `json:"id"`
+	TemplateID    string `json:"template_id"`
+	TemplateRefID *int64 `json:"template_ref_id,omitempty"`
+	FilePath      string `json:"file_path"`
+	SummaryID     *int64 `json:"summary_id"`
+	LensID        *int64 `json:"lens_id"`
+	GeneratedAt   string `json:"generated_at"`
 }
 
 // ResumeTemplate describes a built-in resume layout.
@@ -293,7 +294,7 @@ type ResumeTemplate struct {
 
 // ExportRequest holds the selections for generating a resume export.
 type ExportRequest struct {
-	TemplateID         string        `json:"template_id"`
+	TemplateID         int64         `json:"template_id"`
 	LensID             *int64        `json:"lens_id"`
 	SummaryIDs         []int64       `json:"summary_ids"`
 	MasterSummaryID    *int64        `json:"master_summary_id"`

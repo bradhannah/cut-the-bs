@@ -45,9 +45,10 @@ func extractPDFText(t *testing.T, pdfPath string) string {
 // covering every section, for ATS validation testing.
 func fullATSTestData(outputDir string) domain.RenderResumeRequest {
 	summaryID := int64(1)
+	profTmpl := pdf.ProfessionalTemplate()
 	return domain.RenderResumeRequest{
-		TemplateID: "professional",
-		OutputDir:  outputDir,
+		Template:  &profTmpl,
+		OutputDir: outputDir,
 		Profile: domain.UserProfile{
 			ID:       1,
 			FullName: "Jane Smith",
@@ -348,22 +349,25 @@ func TestATS_ReadingOrder(t *testing.T) {
 func TestATS_BothTemplatesProduceValidPDF(t *testing.T) {
 	renderer := pdf.NewRenderer()
 
-	templates := []string{"professional", "modern"}
-	for _, tmpl := range templates {
-		t.Run(tmpl, func(t *testing.T) {
+	templates := map[string]domain.TemplateDetail{
+		"professional": pdf.ProfessionalTemplate(),
+		"modern":       pdf.ModernTemplate(),
+	}
+	for name, tmpl := range templates {
+		t.Run(name, func(t *testing.T) {
 			outputDir := t.TempDir()
 			req := fullATSTestData(outputDir)
-			req.TemplateID = tmpl
+			req.Template = &tmpl
 
 			path, err := renderer.RenderResume(context.Background(), req)
 			require.NoError(t, err)
 
 			text := extractPDFText(t, path)
-			assert.NotEmpty(t, text, "template %q should produce extractable text", tmpl)
+			assert.NotEmpty(t, text, "template %q should produce extractable text", name)
 			assert.Contains(t, text, "Jane Smith",
-				"template %q should contain profile name", tmpl)
+				"template %q should contain profile name", name)
 			assert.Contains(t, text, "Acme Corp",
-				"template %q should contain work history", tmpl)
+				"template %q should contain work history", name)
 		})
 	}
 }

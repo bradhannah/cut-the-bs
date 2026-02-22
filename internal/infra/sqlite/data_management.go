@@ -659,9 +659,9 @@ func (s *Store) importSkillLensTag(ctx context.Context, tx *sql.Tx, tag domain.S
 
 func (s *Store) importExport(ctx context.Context, tx *sql.Tx, exp domain.ResumeExport) error {
 	_, err := tx.ExecContext(ctx,
-		`INSERT INTO resume_export (id, template_id, file_path, summary_id, lens_id, generated_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		exp.ID, exp.TemplateID, exp.FilePath, exp.SummaryID, exp.LensID, exp.GeneratedAt,
+		`INSERT INTO resume_export (id, template_id, template_ref_id, file_path, summary_id, lens_id, generated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		exp.ID, exp.TemplateID, exp.TemplateRefID, exp.FilePath, exp.SummaryID, exp.LensID, exp.GeneratedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("import: resume_export %d: %w", exp.ID, err)
