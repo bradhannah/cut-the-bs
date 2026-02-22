@@ -650,6 +650,34 @@ func renderWorkTitleElement(
 		if err := rc.pdf.Cell(nil, titleLine); err != nil {
 			return err
 		}
+	} else if cfg.IncludeEmployer {
+		// Employer included with regular (or other) font style: bold title + regular employer.
+		if err := setFont(rc.pdf, "LiberationSans-Bold", cfg.FontSize); err != nil {
+			return err
+		}
+
+		rc.pdf.SetX(rc.marginLeft)
+		rc.pdf.SetY(rc.y)
+		if err := rc.pdf.Cell(nil, entry.JobTitle); err != nil {
+			return err
+		}
+
+		titleW, err := rc.pdf.MeasureTextWidth(entry.JobTitle)
+		if err != nil {
+			return err
+		}
+
+		// Render separator + employer in regular font.
+		if err := setFont(rc.pdf, "LiberationSans-Regular", cfg.FontSize); err != nil {
+			return err
+		}
+
+		empText := cfg.EmployerSeparator + entry.EmployerName
+		rc.pdf.SetX(rc.marginLeft + titleW)
+		rc.pdf.SetY(rc.y)
+		if err := rc.pdf.Cell(nil, empText); err != nil {
+			return err
+		}
 	} else {
 		// Title only.
 		fontName := fontNameFromStyle(cfg.FontStyle)
