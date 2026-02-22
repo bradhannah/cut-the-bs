@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"os"
 	"regexp"
 	"strings"
 
@@ -279,6 +281,124 @@ func validateConfigJSON(config string) error {
 }
 
 // =========================================================
+// Template Export / Import (T068, T069)
+// =========================================================
+
+// ExportTemplate serializes a TemplateDetail to a standalone JSON
+// file at the specified output path. The exported file contains the
+// full template metadata and all elements.
+func (s *TemplateService) ExportTemplate(ctx context.Context, id int64, outputPath string) error {
+	detail, err := s.store.GetDocumentTemplate(ctx, id)
+	if err != nil {
+		return fmt.Errorf("export template: %w", err)
+	}
+
+	data, err := json.MarshalIndent(detail, "", "  ")
+	if err != nil {
+		return fmt.Errorf("export template: marshal: %w", err)
+	}
+
+	if err := os.WriteFile(outputPath, data, 0644); err != nil {
+		return fmt.Errorf("export template: write: %w", err)
+	}
+
+	return nil
+}
+
+// ImportTemplate reads a JSON file, validates the structure, and
+// creates a new user-created template (is_builtin=false) with
+// fresh IDs. Returns the created template.
+func (s *TemplateService) ImportTemplate(ctx context.Context, inputPath string) (domain.DocumentTemplate, error) {
+	data, err := os.ReadFile(inputPath)
+	if err != nil {
+		return domain.DocumentTemplate{}, fmt.Errorf("import template: read: %w", err)
+	}
+
+	var detail domain.TemplateDetail
+	if err := json.Unmarshal(data, &detail); err != nil {
+		return domain.DocumentTemplate{}, fmt.Errorf("import template: parse: %w", err)
+	}
+
+	// Validate required fields.
+	if strings.TrimSpace(detail.Name) == "" {
+		return domain.DocumentTemplate{}, fmt.Errorf("import template: name is required")
+	}
+	if !domain.IsValidTemplateType(detail.TemplateType) {
+		return domain.DocumentTemplate{}, fmt.Errorf("import template: invalid template type: %q", detail.TemplateType)
+	}
+
+	// Validate all element types.
+	for _, el := range detail.Elements {
+		if !domain.IsValidElementType(el.ElementType) {
+			return domain.DocumentTemplate{}, fmt.Errorf("import template: invalid element type: %q", el.ElementType)
+		}
+		if !domain.IsElementTypeCompatible(detail.TemplateType, el.ElementType) {
+			return domain.DocumentTemplate{}, fmt.Errorf("import template: element type %q not compatible with %s template",
+				el.ElementType, detail.TemplateType)
+		}
+	}
+
+	// Create the template.
+	input := domain.DocumentTemplateInput{
+		Name:         detail.Name,
+		Description:  detail.Description,
+		TemplateType: detail.TemplateType,
+		MarginTop:    detail.MarginTop,
+		MarginBottom: detail.MarginBottom,
+		MarginLeft:   detail.MarginLeft,
+		MarginRight:  detail.MarginRight,
+	}
+	created, err := s.store.CreateDocumentTemplate(ctx, input)
+	if err != nil {
+		return domain.DocumentTemplate{}, fmt.Errorf("import template: create: %w", err)
+	}
+
+	// Build a map from old element IDs to new element IDs, so we
+	// can resolve parent_id references for child elements.
+	oldToNewID := make(map[int64]int64)
+
+	// First pass: create top-level elements (no parent).
+	for _, el := range detail.Elements {
+		if el.ParentID != nil {
+			continue
+		}
+		elInput := domain.TemplateElementInput{
+			ElementType: el.ElementType,
+			Config:      el.Config,
+			ParentID:    nil,
+		}
+		newEl, err := s.store.CreateTemplateElement(ctx, created.ID, elInput)
+		if err != nil {
+			return domain.DocumentTemplate{}, fmt.Errorf("import template: create element: %w", err)
+		}
+		oldToNewID[el.ID] = newEl.ID
+	}
+
+	// Second pass: create child elements (with parent).
+	for _, el := range detail.Elements {
+		if el.ParentID == nil {
+			continue
+		}
+		newParentID, ok := oldToNewID[*el.ParentID]
+		if !ok {
+			return domain.DocumentTemplate{}, fmt.Errorf("import template: parent element %d not found for child %d", *el.ParentID, el.ID)
+		}
+		elInput := domain.TemplateElementInput{
+			ElementType: el.ElementType,
+			Config:      el.Config,
+			ParentID:    &newParentID,
+		}
+		newEl, err := s.store.CreateTemplateElement(ctx, created.ID, elInput)
+		if err != nil {
+			return domain.DocumentTemplate{}, fmt.Errorf("import template: create child element: %w", err)
+		}
+		oldToNewID[el.ID] = newEl.ID
+	}
+
+	return created, nil
+}
+
+// =========================================================
 // Template Variable Parsing (T050)
 // =========================================================
 
@@ -334,7 +454,7 @@ func (s *TemplateService) ParseTemplateVariables(detail domain.TemplateDetail) d
 
 // ApplySubstitutions replaces all {{variable_name}} and {{prompt: text}}
 // placeholders in the given text with values from the substitution map.
-// Missing variables are replaced with empty strings.
+// Missing variables are replaced with empty strings and a warning is logged.
 func ApplySubstitutions(text string, subs map[string]string) string {
 	if subs == nil || text == "" {
 		return text
@@ -348,12 +468,18 @@ func ApplySubstitutions(text string, subs map[string]string) string {
 			if val, ok := subs[key]; ok {
 				return val
 			}
+			slog.Warn("unresolved prompt placeholder replaced with empty string",
+				"prompt", promptText,
+			)
 			return "" // unresolved prompt
 		}
 		// Regular variable
 		if val, ok := subs[inner]; ok {
 			return val
 		}
+		slog.Warn("unresolved variable placeholder replaced with empty string",
+			"variable", inner,
+		)
 		return "" // unresolved variable
 	})
 }

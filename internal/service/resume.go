@@ -18,6 +18,7 @@ type ExportStore interface {
 
 	// Content
 	GetSummary(ctx context.Context, id int64) (domain.ProfessionalSummary, error)
+	ListSummaries(ctx context.Context) ([]domain.ProfessionalSummary, error)
 	ListWorkHistory(ctx context.Context) ([]domain.WorkHistoryEntry, error)
 	ListSkills(ctx context.Context) ([]domain.Skill, error)
 	ListSkillCategories(ctx context.Context) ([]domain.SkillCategory, error)
@@ -83,6 +84,144 @@ func (s *ResumeService) GetExport(
 	id int64,
 ) (domain.ResumeExport, error) {
 	return s.store.GetExport(ctx, id)
+}
+
+// PreviewTemplate generates a preview PDF for a template using all
+// available user data (no content selection filtering). For resume
+// templates, all summaries, work history, skills, etc. are included.
+// For cover letter templates, placeholder values are substituted for
+// variables (e.g., "{{company_name}}" becomes "[Company Name]").
+// Returns the file path of the generated PDF.
+func (s *ResumeService) PreviewTemplate(
+	ctx context.Context,
+	templateID int64,
+) (string, error) {
+	if templateID == 0 {
+		return "", fmt.Errorf("template ID is required")
+	}
+
+	tmpl, err := s.store.GetDocumentTemplate(ctx, templateID)
+	if err != nil {
+		return "", fmt.Errorf("get template: %w", err)
+	}
+
+	if tmpl.TemplateType == domain.TemplateTypeCoverLetter {
+		return s.previewCoverLetterTemplate(ctx, tmpl)
+	}
+
+	return s.previewResumeTemplate(ctx, tmpl)
+}
+
+// previewResumeTemplate renders a resume template with all user data.
+func (s *ResumeService) previewResumeTemplate(
+	ctx context.Context,
+	tmpl domain.TemplateDetail,
+) (string, error) {
+	profile, err := s.store.GetProfile(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get profile: %w", err)
+	}
+
+	links, err := s.store.ListProfileLinks(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list profile links: %w", err)
+	}
+
+	summaries, err := s.store.ListSummaries(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list summaries: %w", err)
+	}
+
+	workHistory, err := s.store.ListWorkHistory(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list work history: %w", err)
+	}
+
+	skills, err := s.store.ListSkills(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list skills: %w", err)
+	}
+
+	skillCatNames, err := s.loadSkillCategoryNames(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	academics, err := s.store.ListAcademicCredentials(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list academics: %w", err)
+	}
+
+	certs, err := s.store.ListCertifications(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list certifications: %w", err)
+	}
+
+	descriptors, err := s.store.ListDescriptors(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list descriptors: %w", err)
+	}
+
+	coreExpertise, err := s.store.ListCoreExpertise(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list core expertise: %w", err)
+	}
+
+	renderReq := domain.RenderResumeRequest{
+		Template:           &tmpl,
+		OutputDir:          s.outputDir,
+		Profile:            profile,
+		Links:              links,
+		Summaries:          summaries,
+		WorkHistory:        workHistory,
+		Skills:             skills,
+		SkillCategoryNames: skillCatNames,
+		Academics:          academics,
+		Certs:              certs,
+		Descriptors:        descriptors,
+		CoreExpertise:      coreExpertise,
+	}
+
+	return s.renderer.RenderResume(ctx, renderReq)
+}
+
+// previewCoverLetterTemplate renders a cover letter template with
+// profile data and placeholder substitutions for variables.
+func (s *ResumeService) previewCoverLetterTemplate(
+	ctx context.Context,
+	tmpl domain.TemplateDetail,
+) (string, error) {
+	profile, err := s.store.GetProfile(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get profile: %w", err)
+	}
+
+	links, err := s.store.ListProfileLinks(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list profile links: %w", err)
+	}
+
+	// Build placeholder substitution map for variables/prompts.
+	ts := NewTemplateService(nil)
+	vars := ts.ParseTemplateVariables(tmpl)
+
+	subs := make(map[string]string, len(vars.Variables)+len(vars.Prompts))
+	for _, v := range vars.Variables {
+		subs[v.Name] = "[" + v.Name + "]"
+	}
+	for _, p := range vars.Prompts {
+		subs["prompt:"+p.PromptText] = "[" + p.PromptText + "]"
+	}
+
+	clReq := domain.RenderCoverLetterRequest{
+		Template:        &tmpl,
+		OutputDir:       s.outputDir,
+		Profile:         profile,
+		Links:           links,
+		SubstitutionMap: subs,
+	}
+
+	return s.renderer.RenderCoverLetter(ctx, clReq)
 }
 
 // PreviewExport generates a PDF without creating an export record.

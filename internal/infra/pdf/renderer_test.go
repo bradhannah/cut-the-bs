@@ -1271,3 +1271,49 @@ func mustJSONTest(v any) string {
 	}
 	return string(b)
 }
+
+func TestRenderer_RenderResume_UnknownElementTypeSkipped(t *testing.T) {
+	// A template with an unknown element type should render without
+	// error — the unknown element is silently skipped.
+	dir := t.TempDir()
+	r := NewRenderer()
+
+	tmpl := domain.TemplateDetail{
+		DocumentTemplate: domain.DocumentTemplate{
+			ID:           999,
+			Name:         "Template With Unknown Element",
+			TemplateType: domain.TemplateTypeResume,
+			MarginTop:    54.0,
+			MarginBottom: 54.0,
+			MarginLeft:   72.0,
+			MarginRight:  72.0,
+		},
+		Elements: []domain.TemplateElement{
+			{ID: 1, TemplateID: 999, ElementType: domain.ElementProfileHeader, SortOrder: 0,
+				Config: mustJSONTest(ProfileHeaderConfig{
+					NameFontSize: 18.0, DetailFontSize: 10.0,
+					Alignment: "center", SpaceAfter: 6.0,
+				})},
+			{ID: 2, TemplateID: 999, ElementType: "totally_unknown_widget", SortOrder: 1,
+				Config: `{}`},
+			{ID: 3, TemplateID: 999, ElementType: domain.ElementSpacer, SortOrder: 2,
+				Config: mustJSONTest(SpacerConfig{Height: 10.0})},
+		},
+	}
+
+	req := domain.RenderResumeRequest{
+		Template:  &tmpl,
+		OutputDir: dir,
+		Profile: domain.UserProfile{
+			FullName: "Test User",
+			Email:    "test@example.com",
+		},
+	}
+
+	path, err := r.RenderResume(context.Background(), req)
+	require.NoError(t, err, "unknown element type should be skipped, not cause an error")
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Greater(t, info.Size(), int64(0))
+}

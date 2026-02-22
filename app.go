@@ -1151,6 +1151,38 @@ func (a *App) ReorderTemplateElements(templateID int64, parentID *int64, ordered
 	return err
 }
 
+// PreviewTemplate generates a preview PDF for a template using all
+// available user data (resume templates) or placeholder substitutions
+// (cover letter templates). Returns the file path of the generated PDF.
+func (a *App) PreviewTemplate(templateID int64) (string, error) {
+	return a.resumeSvc.PreviewTemplate(a.ctx, templateID)
+}
+
+// OpenFile opens a file at the given path in the system's default
+// application (e.g., PDF viewer for .pdf files).
+func (a *App) OpenFile(filePath string) error {
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return fmt.Errorf("resolve path: %w", err)
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", absPath)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", "", absPath)
+	default:
+		cmd = exec.Command("xdg-open", absPath)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("open file: %w", err)
+	}
+
+	return nil
+}
+
 // ParseTemplateVariables scans a cover letter template for variable
 // placeholders ({{var}}) and guided prompts ({{prompt: text}}).
 func (a *App) ParseTemplateVariables(templateID int64) (domain.TemplateVariables, error) {
@@ -1159,6 +1191,18 @@ func (a *App) ParseTemplateVariables(templateID int64) (domain.TemplateVariables
 		return domain.TemplateVariables{}, err
 	}
 	return a.templateSvc.ParseTemplateVariables(detail), nil
+}
+
+// ExportTemplate serializes a template and all its elements to a
+// standalone JSON file at the given path.
+func (a *App) ExportTemplate(templateID int64, outputPath string) error {
+	return a.templateSvc.ExportTemplate(a.ctx, templateID, outputPath)
+}
+
+// ImportTemplate reads a template JSON file and creates a new
+// user template with fresh IDs. Returns the created template.
+func (a *App) ImportTemplate(inputPath string) (domain.DocumentTemplate, error) {
+	return a.templateSvc.ImportTemplate(a.ctx, inputPath)
 }
 
 // =================================================================

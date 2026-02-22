@@ -4,6 +4,7 @@
   import {
     listDocumentTemplates,
     createDocumentTemplate,
+    updateDocumentTemplate,
     deleteDocumentTemplate,
     duplicateDocumentTemplate,
     addToast,
@@ -21,6 +22,20 @@
   let newName = "";
   let newType = "resume";
   let creating = false;
+
+  // --- Inline rename ---
+  let editingId: number | null = null;
+  let editingName = "";
+
+  // --- Duplicate dialog ---
+  let showDuplicateDialog = false;
+  let duplicateName = "";
+  let duplicatingTemplate: DocumentTemplate | null = null;
+  let duplicating = false;
+
+  // --- Delete confirmation ---
+  let showDeleteDialog = false;
+  let deletingTemplate: DocumentTemplate | null = null;
 
   onMount(async () => {
     await loadTemplates();
@@ -73,26 +88,110 @@
     }
   }
 
-  async function handleDuplicate(tmpl: DocumentTemplate): Promise<void> {
-    const name = `${tmpl.name} (Copy)`;
+  function openDuplicateDialog(tmpl: DocumentTemplate): void {
+    duplicatingTemplate = tmpl;
+    duplicateName = `${tmpl.name} (Copy)`;
+    showDuplicateDialog = true;
+  }
+
+  function closeDuplicateDialog(): void {
+    showDuplicateDialog = false;
+    duplicatingTemplate = null;
+    duplicateName = "";
+  }
+
+  async function handleDuplicate(): Promise<void> {
+    if (!duplicatingTemplate || !duplicateName.trim()) {
+      addToast("error", "Template name is required");
+      return;
+    }
+    duplicating = true;
     try {
-      const dup = await duplicateDocumentTemplate(tmpl.id, name);
+      const dup = await duplicateDocumentTemplate(
+        duplicatingTemplate.id,
+        duplicateName.trim()
+      );
       templates = [...templates, dup];
+      closeDuplicateDialog();
     } catch (e: any) {
       addToast("error", e?.message || "Failed to duplicate template");
+    } finally {
+      duplicating = false;
     }
   }
 
-  async function handleDelete(tmpl: DocumentTemplate): Promise<void> {
+  function confirmDelete(tmpl: DocumentTemplate): void {
     if (tmpl.is_builtin) {
       addToast("error", "Built-in templates cannot be deleted");
       return;
     }
+    deletingTemplate = tmpl;
+    showDeleteDialog = true;
+  }
+
+  function closeDeleteDialog(): void {
+    showDeleteDialog = false;
+    deletingTemplate = null;
+  }
+
+  async function handleDelete(): Promise<void> {
+    if (!deletingTemplate) return;
     try {
-      await deleteDocumentTemplate(tmpl.id);
-      templates = templates.filter((t) => t.id !== tmpl.id);
+      await deleteDocumentTemplate(deletingTemplate.id);
+      templates = templates.filter((t) => t.id !== deletingTemplate!.id);
+      closeDeleteDialog();
     } catch (e: any) {
       addToast("error", e?.message || "Failed to delete template");
+    }
+  }
+
+  function startRename(tmpl: DocumentTemplate): void {
+    editingId = tmpl.id;
+    editingName = tmpl.name;
+  }
+
+  function cancelRename(): void {
+    editingId = null;
+    editingName = "";
+  }
+
+  async function saveRename(tmpl: DocumentTemplate): Promise<void> {
+    const trimmed = editingName.trim();
+    if (!trimmed) {
+      addToast("error", "Template name cannot be empty");
+      return;
+    }
+    if (trimmed === tmpl.name) {
+      cancelRename();
+      return;
+    }
+    try {
+      const input: DocumentTemplateInput = {
+        name: trimmed,
+        description: tmpl.description || "",
+        template_type: tmpl.template_type,
+        margin_top: tmpl.margin_top,
+        margin_bottom: tmpl.margin_bottom,
+        margin_left: tmpl.margin_left,
+        margin_right: tmpl.margin_right,
+      };
+      await updateDocumentTemplate(tmpl.id, input);
+      templates = templates.map((t) =>
+        t.id === tmpl.id ? { ...t, name: trimmed } : t
+      );
+      cancelRename();
+    } catch (e: any) {
+      addToast("error", e?.message || "Failed to rename template");
+    }
+  }
+
+  function handleRenameKeydown(e: KeyboardEvent, tmpl: DocumentTemplate): void {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      saveRename(tmpl);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      cancelRename();
     }
   }
 
@@ -102,6 +201,15 @@
     }
     if (showCreateDialog && e.key === "Enter") {
       handleCreate();
+    }
+    if (showDuplicateDialog && e.key === "Escape") {
+      closeDuplicateDialog();
+    }
+    if (showDuplicateDialog && e.key === "Enter") {
+      handleDuplicate();
+    }
+    if (showDeleteDialog && e.key === "Escape") {
+      closeDeleteDialog();
     }
   }
 </script>
@@ -130,7 +238,19 @@
         <div class="template-card" class:builtin={tmpl.is_builtin}>
           <div class="card-header">
             <h3 class="card-title">
-              <a href={"#/templates/" + tmpl.id + "/builder"}>{tmpl.name}</a>
+              {#if editingId === tmpl.id}
+                <input
+                  class="rename-input"
+                  type="text"
+                  bind:value={editingName}
+                  on:keydown={(e) => handleRenameKeydown(e, tmpl)}
+                  on:blur={() => saveRename(tmpl)}
+                  maxlength="100"
+                  autofocus
+                />
+              {:else}
+                <a href={"#/templates/" + tmpl.id + "/builder"}>{tmpl.name}</a>
+              {/if}
             </h3>
             <div class="card-badges">
               <span class="type-badge">{tmpl.template_type}</span>
@@ -152,16 +272,24 @@
             >
               Edit
             </a>
+            {#if !tmpl.is_builtin}
+              <button
+                class="btn btn-small btn-ghost"
+                on:click={() => startRename(tmpl)}
+              >
+                Rename
+              </button>
+            {/if}
             <button
               class="btn btn-small btn-ghost"
-              on:click={() => handleDuplicate(tmpl)}
+              on:click={() => openDuplicateDialog(tmpl)}
             >
               Duplicate
             </button>
             {#if !tmpl.is_builtin}
               <button
                 class="btn btn-small btn-danger"
-                on:click={() => handleDelete(tmpl)}
+                on:click={() => confirmDelete(tmpl)}
               >
                 Delete
               </button>
@@ -209,6 +337,65 @@
           disabled={creating || !newName.trim()}
         >
           {creating ? "Creating..." : "Create"}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Duplicate template dialog -->
+{#if showDuplicateDialog}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <div class="dialog-overlay" on:click|self={closeDuplicateDialog}>
+    <div class="dialog">
+      <h3 class="dialog-title">Duplicate Template</h3>
+      <div class="dialog-body">
+        <div class="form-field">
+          <label class="form-label" for="dup-name">Name</label>
+          <input
+            id="dup-name"
+            class="form-input"
+            type="text"
+            bind:value={duplicateName}
+            placeholder="Template name"
+            maxlength="100"
+          />
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button class="btn btn-cancel" on:click={closeDuplicateDialog}>
+          Cancel
+        </button>
+        <button
+          class="btn btn-primary"
+          on:click={handleDuplicate}
+          disabled={duplicating || !duplicateName.trim()}
+        >
+          {duplicating ? "Duplicating..." : "Duplicate"}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Delete confirmation dialog -->
+{#if showDeleteDialog && deletingTemplate}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <div class="dialog-overlay" on:click|self={closeDeleteDialog}>
+    <div class="dialog">
+      <h3 class="dialog-title">Delete Template</h3>
+      <div class="dialog-body">
+        <p class="confirm-text">
+          Are you sure you want to delete <strong>{deletingTemplate.name}</strong>?
+          This will also delete all elements in the template. This action cannot be undone.
+        </p>
+      </div>
+      <div class="dialog-actions">
+        <button class="btn btn-cancel" on:click={closeDeleteDialog}>
+          Cancel
+        </button>
+        <button class="btn btn-danger" on:click={handleDelete}>
+          Delete
         </button>
       </div>
     </div>
@@ -291,6 +478,18 @@
 
   .card-title a:hover {
     color: #4a8af4;
+  }
+
+  .rename-input {
+    width: 100%;
+    padding: 2px 6px;
+    background-color: #1b2636;
+    border: 1px solid #4a8af4;
+    border-radius: 3px;
+    color: #e0e0e0;
+    font-size: 1rem;
+    font-weight: 600;
+    outline: none;
   }
 
   .card-badges {
@@ -463,5 +662,12 @@
     display: flex;
     justify-content: flex-end;
     gap: 10px;
+  }
+
+  .confirm-text {
+    color: #c0d0e0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin: 0;
   }
 </style>

@@ -3,6 +3,7 @@ package pdf
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -174,7 +175,12 @@ func dispatchElement(rc *renderContext, el domain.TemplateElement) error {
 		return renderRecipientAddressElement(rc, el)
 
 	default:
-		return fmt.Errorf("unknown element type: %q", el.ElementType)
+		slog.Warn("skipping unknown element type",
+			"element_type", el.ElementType,
+			"element_id", el.ID,
+			"template", rc.tmpl.Name,
+		)
+		return nil
 	}
 }
 
@@ -294,11 +300,20 @@ func renderSpacerElement(rc *renderContext, el domain.TemplateElement) error {
 	return nil
 }
 
-// renderStaticTextElement renders a block of static text.
+// renderStaticTextElement renders a block of static text. When
+// rendering within a cover letter context, variable placeholders
+// (e.g., {{signer_name}}) are substituted before rendering.
 func renderStaticTextElement(rc *renderContext, el domain.TemplateElement) error {
 	var cfg StaticTextConfig
 	if err := json.Unmarshal([]byte(el.Config), &cfg); err != nil {
 		return fmt.Errorf("parse static_text config: %w", err)
+	}
+
+	text := cfg.Text
+
+	// Apply variable substitutions for cover letter context.
+	if rc.coverLetterReq != nil && len(rc.coverLetterReq.SubstitutionMap) > 0 {
+		text = service.ApplySubstitutions(text, rc.coverLetterReq.SubstitutionMap)
 	}
 
 	rc.y += cfg.SpaceBefore
@@ -309,7 +324,7 @@ func renderStaticTextElement(rc *renderContext, el domain.TemplateElement) error
 	}
 
 	var err error
-	rc.y, err = renderWrappedText(rc.pdf, cfg.Text, rc.marginLeft, rc.y, rc.usableWidth, cfg.FontSize)
+	rc.y, err = renderWrappedText(rc.pdf, text, rc.marginLeft, rc.y, rc.usableWidth, cfg.FontSize)
 	if err != nil {
 		return fmt.Errorf("render static text: %w", err)
 	}
@@ -562,7 +577,12 @@ func dispatchWorkChild(
 	case domain.ElementStaticText:
 		return renderStaticTextElement(rc, el)
 	default:
-		return fmt.Errorf("unknown work child element type: %q", el.ElementType)
+		slog.Warn("skipping unknown work child element type",
+			"element_type", el.ElementType,
+			"element_id", el.ID,
+			"template", rc.tmpl.Name,
+		)
+		return nil
 	}
 }
 

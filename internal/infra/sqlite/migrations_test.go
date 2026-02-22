@@ -1137,13 +1137,13 @@ func TestMigrateV7_SeedsBuiltinTemplates(t *testing.T) {
 	err := Migrate(store)
 	require.NoError(t, err)
 
-	// Should have 2 built-in resume templates.
+	// Should have 4 built-in templates (2 resume + 2 cover letter).
 	var templateCount int
 	err = store.DB().QueryRow(
 		"SELECT count(*) FROM document_template WHERE is_builtin = 1",
 	).Scan(&templateCount)
 	require.NoError(t, err)
-	assert.Equal(t, 2, templateCount, "should have 2 built-in templates")
+	assert.Equal(t, 4, templateCount, "should have 4 built-in templates")
 
 	// Verify Professional template exists with correct properties.
 	var name, templateType string

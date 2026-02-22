@@ -628,12 +628,13 @@ func TestListDocumentTemplates_IncludesUserCreated(t *testing.T) {
 	templates, err := store.ListDocumentTemplates(ctx)
 	require.NoError(t, err)
 
-	// Should have 2 built-in + 1 user-created.
-	assert.Len(t, templates, 3)
+	// Should have 4 built-in + 1 user-created.
+	assert.Len(t, templates, 5)
 
-	// First two should be built-in, last should be user-created.
-	assert.True(t, templates[0].IsBuiltin)
-	assert.True(t, templates[1].IsBuiltin)
-	assert.False(t, templates[2].IsBuiltin)
-	assert.Equal(t, "Custom Template", templates[2].Name)
+	// First four should be built-in, last should be user-created.
+	for i := 0; i < 4; i++ {
+		assert.True(t, templates[i].IsBuiltin, "template %d should be built-in", i)
+	}
+	assert.False(t, templates[4].IsBuiltin)
+	assert.Equal(t, "Custom Template", templates[4].Name)
 }

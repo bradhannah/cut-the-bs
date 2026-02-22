@@ -3,11 +3,13 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
 	"cut-the-bs/internal/domain"
 	"cut-the-bs/internal/infra/pdf"
+	"cut-the-bs/internal/service"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -151,6 +153,242 @@ func TestTemplate_UpdateElementConfig(t *testing.T) {
 		"first render should have summary text")
 	assert.Contains(t, text2, "broad experience",
 		"second render should have summary text")
+}
+
+// TestTemplate_ManagementOperations (T062) verifies CRUD operations
+// for template management: create, list, rename/update, duplicate,
+// delete, and built-in protection.
+func TestTemplate_ManagementOperations(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+
+	t.Run("list includes seeded built-in templates", func(t *testing.T) {
+		templates, err := store.ListDocumentTemplates(ctx)
+		require.NoError(t, err)
+		// Migration v7 seeds 4 built-in templates: Professional,
+		// Modern (resume), Formal, Casual (cover letter).
+		assert.GreaterOrEqual(t, len(templates), 4,
+			"should have at least 4 built-in templates")
+
+		builtinCount := 0
+		for _, tmpl := range templates {
+			if tmpl.IsBuiltin {
+				builtinCount++
+			}
+		}
+		assert.Equal(t, 4, builtinCount,
+			"should have exactly 4 built-in templates")
+	})
+
+	t.Run("create user template", func(t *testing.T) {
+		tmpl, err := store.CreateDocumentTemplate(ctx, domain.DocumentTemplateInput{
+			Name:         "My Custom Resume",
+			Description:  "A custom template for testing",
+			TemplateType: domain.TemplateTypeResume,
+			MarginTop:    54.0,
+			MarginBottom: 54.0,
+			MarginLeft:   72.0,
+			MarginRight:  72.0,
+		})
+		require.NoError(t, err)
+		assert.NotZero(t, tmpl.ID)
+		assert.Equal(t, "My Custom Resume", tmpl.Name)
+		assert.False(t, tmpl.IsBuiltin,
+			"user-created template should not be built-in")
+	})
+
+	t.Run("update user template name and description", func(t *testing.T) {
+		tmpl, err := store.CreateDocumentTemplate(ctx, domain.DocumentTemplateInput{
+			Name:         "Before Rename",
+			TemplateType: domain.TemplateTypeResume,
+			MarginTop:    54.0,
+			MarginBottom: 54.0,
+			MarginLeft:   72.0,
+			MarginRight:  72.0,
+		})
+		require.NoError(t, err)
+
+		updated, err := store.UpdateDocumentTemplate(ctx, tmpl.ID, domain.DocumentTemplateInput{
+			Name:         "After Rename",
+			Description:  "Updated description",
+			TemplateType: domain.TemplateTypeResume,
+			MarginTop:    54.0,
+			MarginBottom: 54.0,
+			MarginLeft:   72.0,
+			MarginRight:  72.0,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "After Rename", updated.Name)
+		assert.Equal(t, "Updated description", updated.Description)
+	})
+
+	t.Run("cannot update built-in template", func(t *testing.T) {
+		templates, err := store.ListDocumentTemplates(ctx)
+		require.NoError(t, err)
+
+		var builtinID int64
+		for _, tmpl := range templates {
+			if tmpl.IsBuiltin {
+				builtinID = tmpl.ID
+				break
+			}
+		}
+		require.NotZero(t, builtinID, "should find a built-in template")
+
+		_, err = store.UpdateDocumentTemplate(ctx, builtinID, domain.DocumentTemplateInput{
+			Name:         "Hacked Name",
+			TemplateType: domain.TemplateTypeResume,
+			MarginTop:    54.0,
+			MarginBottom: 54.0,
+			MarginLeft:   72.0,
+			MarginRight:  72.0,
+		})
+		require.Error(t, err,
+			"should not allow updating built-in template")
+	})
+
+	t.Run("cannot delete built-in template", func(t *testing.T) {
+		templates, err := store.ListDocumentTemplates(ctx)
+		require.NoError(t, err)
+
+		var builtinID int64
+		for _, tmpl := range templates {
+			if tmpl.IsBuiltin {
+				builtinID = tmpl.ID
+				break
+			}
+		}
+		require.NotZero(t, builtinID)
+
+		err = store.DeleteDocumentTemplate(ctx, builtinID)
+		require.Error(t, err,
+			"should not allow deleting built-in template")
+	})
+
+	t.Run("delete user template", func(t *testing.T) {
+		tmpl, err := store.CreateDocumentTemplate(ctx, domain.DocumentTemplateInput{
+			Name:         "To Be Deleted",
+			TemplateType: domain.TemplateTypeResume,
+			MarginTop:    54.0,
+			MarginBottom: 54.0,
+			MarginLeft:   72.0,
+			MarginRight:  72.0,
+		})
+		require.NoError(t, err)
+
+		// Add an element so we verify cascade delete.
+		_, err = store.CreateTemplateElement(ctx, tmpl.ID, domain.TemplateElementInput{
+			ElementType: domain.ElementProfileHeader,
+			Config: mustJSON(pdf.ProfileHeaderConfig{
+				NameFontSize: 18.0, DetailFontSize: 10.0,
+				Alignment: "center", SpaceAfter: 6.0,
+			}),
+		})
+		require.NoError(t, err)
+
+		err = store.DeleteDocumentTemplate(ctx, tmpl.ID)
+		require.NoError(t, err)
+
+		// Verify template is gone.
+		_, err = store.GetDocumentTemplate(ctx, tmpl.ID)
+		require.Error(t, err, "should not find deleted template")
+	})
+
+	t.Run("duplicate user-created template", func(t *testing.T) {
+		original, err := store.CreateDocumentTemplate(ctx, domain.DocumentTemplateInput{
+			Name:         "Original Template",
+			Description:  "The original",
+			TemplateType: domain.TemplateTypeResume,
+			MarginTop:    54.0,
+			MarginBottom: 54.0,
+			MarginLeft:   72.0,
+			MarginRight:  72.0,
+		})
+		require.NoError(t, err)
+
+		// Add elements to verify they are duplicated.
+		_, err = store.CreateTemplateElement(ctx, original.ID, domain.TemplateElementInput{
+			ElementType: domain.ElementProfileHeader,
+			Config: mustJSON(pdf.ProfileHeaderConfig{
+				NameFontSize: 18.0, DetailFontSize: 10.0,
+				Alignment: "center", SpaceAfter: 6.0,
+			}),
+		})
+		require.NoError(t, err)
+
+		_, err = store.CreateTemplateElement(ctx, original.ID, domain.TemplateElementInput{
+			ElementType: domain.ElementSectionHeading,
+			Config: mustJSON(pdf.SectionHeadingConfig{
+				Text: "Summary", FontSize: 12.0, FontStyle: "bold",
+				Uppercase: true, Underline: true, UnderlineWeight: 0.5,
+				SpaceBefore: 10.0, SpaceAfter: 4.0,
+			}),
+		})
+		require.NoError(t, err)
+
+		copy, err := store.DuplicateDocumentTemplate(ctx, original.ID, "Copy of Original")
+		require.NoError(t, err)
+		assert.NotEqual(t, original.ID, copy.ID,
+			"copy should have different ID")
+		assert.Equal(t, "Copy of Original", copy.Name)
+		assert.False(t, copy.IsBuiltin,
+			"copy should never be built-in")
+
+		// Verify elements were duplicated.
+		copyDetail, err := store.GetDocumentTemplate(ctx, copy.ID)
+		require.NoError(t, err)
+		assert.Len(t, copyDetail.Elements, 2,
+			"copy should have same number of elements")
+	})
+
+	t.Run("duplicate built-in template", func(t *testing.T) {
+		templates, err := store.ListDocumentTemplates(ctx)
+		require.NoError(t, err)
+
+		var builtinID int64
+		var builtinName string
+		for _, tmpl := range templates {
+			if tmpl.IsBuiltin && tmpl.TemplateType == domain.TemplateTypeResume {
+				builtinID = tmpl.ID
+				builtinName = tmpl.Name
+				break
+			}
+		}
+		require.NotZero(t, builtinID)
+
+		copy, err := store.DuplicateDocumentTemplate(ctx, builtinID, builtinName+" Copy")
+		require.NoError(t, err)
+		assert.False(t, copy.IsBuiltin,
+			"duplicate of built-in should not be built-in")
+		assert.Equal(t, builtinName+" Copy", copy.Name)
+
+		// Verify the copy has elements from the built-in template.
+		copyDetail, err := store.GetDocumentTemplate(ctx, copy.ID)
+		require.NoError(t, err)
+		assert.Greater(t, len(copyDetail.Elements), 0,
+			"copy of built-in should have elements")
+	})
+
+	t.Run("list reflects all operations", func(t *testing.T) {
+		templates, err := store.ListDocumentTemplates(ctx)
+		require.NoError(t, err)
+
+		// Should have built-in + all user-created templates
+		// (minus deleted ones).
+		assert.Greater(t, len(templates), 4,
+			"should have more than just built-ins after creating templates")
+
+		// Built-in templates should appear first.
+		foundFirstNonBuiltin := false
+		for _, tmpl := range templates {
+			if !tmpl.IsBuiltin {
+				foundFirstNonBuiltin = true
+			}
+			if foundFirstNonBuiltin && tmpl.IsBuiltin {
+				t.Error("built-in template appeared after non-built-in")
+			}
+		}
+	})
 }
 
 // mustJSON marshals v to a JSON string, panicking on error.
@@ -900,6 +1138,149 @@ func TestTemplate_EmptySectionsOmitted(t *testing.T) {
 		"EDUCATION heading should be omitted — no academic data")
 }
 
+// TestTemplate_PreviewTemplate (T058) verifies that
+// ResumeService.PreviewTemplate generates valid PDFs for both resume
+// and cover letter templates using all available user data.
+func TestTemplate_PreviewTemplate(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+
+	// Seed user data.
+	_, err := store.GetProfile(ctx)
+	require.NoError(t, err)
+	_, err = store.UpdateProfile(ctx, domain.UserProfile{
+		FullName: "Preview User",
+		Email:    "preview@test.com",
+		Phone:    "555-7777",
+		Location: "Seattle, WA",
+	})
+	require.NoError(t, err)
+
+	_, err = store.CreateProfileLink(ctx, domain.ProfileLinkInput{
+		Label: "LinkedIn",
+		URL:   "https://linkedin.com/in/preview",
+	})
+	require.NoError(t, err)
+
+	_, err = store.CreateSummary(ctx, domain.SummaryInput{
+		Label:    "Preview Summary",
+		BodyText: "Experienced engineer specializing in preview testing.",
+	})
+	require.NoError(t, err)
+
+	wh, err := store.CreateWorkHistory(ctx, domain.WorkHistoryInput{
+		EmployerName:         "PreviewCo",
+		JobTitle:             "Staff Engineer",
+		StartDate:            "2022-06",
+		DateGranularityStart: "month",
+	})
+	require.NoError(t, err)
+	_, err = store.CreateBullet(ctx, wh.ID, "Led preview infrastructure team", domain.BulletTypePrimary)
+	require.NoError(t, err)
+
+	cat, err := store.CreateSkillCategory(ctx, "Languages")
+	require.NoError(t, err)
+	_, err = store.CreateSkill(ctx, domain.SkillInput{
+		Name: "Go", CategoryID: cat.ID, CompetenceLevel: 9,
+	})
+	require.NoError(t, err)
+
+	_, err = store.CreateAcademicCredential(ctx, domain.AcademicInput{
+		Institution:     "Preview University",
+		CredentialType:  "BS",
+		FieldOfStudy:    "CS",
+		CompletionDate:  "2020-05",
+		DateGranularity: "month",
+	})
+	require.NoError(t, err)
+
+	_, err = store.CreateDescriptor(ctx, "Platform Architect")
+	require.NoError(t, err)
+
+	renderer := pdf.NewRenderer()
+	outputDir := t.TempDir()
+	svc := service.NewResumeService(store, renderer, outputDir)
+
+	t.Run("resume template preview", func(t *testing.T) {
+		// Use the built-in Professional template (seeded by migration).
+		templates, err := store.ListDocumentTemplates(ctx)
+		require.NoError(t, err)
+
+		var resumeTemplateID int64
+		for _, tmpl := range templates {
+			if tmpl.TemplateType == domain.TemplateTypeResume {
+				resumeTemplateID = tmpl.ID
+				break
+			}
+		}
+		require.NotZero(t, resumeTemplateID, "should find a resume template")
+
+		pdfPath, err := svc.PreviewTemplate(ctx, resumeTemplateID)
+		require.NoError(t, err)
+
+		// Verify file exists and is non-empty.
+		info, err := os.Stat(pdfPath)
+		require.NoError(t, err)
+		assert.Greater(t, info.Size(), int64(0), "PDF should not be empty")
+
+		// Verify content includes seeded data.
+		text := extractPDFText(t, pdfPath)
+		assert.Contains(t, text, "Preview User", "profile name should appear")
+		assert.Contains(t, text, "preview@test.com", "email should appear")
+		assert.Contains(t, text, "PreviewCo", "employer should appear")
+		assert.Contains(t, text, "Staff Engineer", "job title should appear")
+		assert.Contains(t, text, "preview infrastructure", "bullet should appear")
+		assert.Contains(t, text, "Go", "skill should appear")
+		assert.Contains(t, text, "Preview University", "academic should appear")
+		assert.Contains(t, text, "Platform Architect", "descriptor should appear")
+	})
+
+	t.Run("cover letter template preview with placeholders", func(t *testing.T) {
+		// Use the built-in Formal cover letter template.
+		templates, err := store.ListDocumentTemplates(ctx)
+		require.NoError(t, err)
+
+		var clTemplateID int64
+		for _, tmpl := range templates {
+			if tmpl.TemplateType == domain.TemplateTypeCoverLetter {
+				clTemplateID = tmpl.ID
+				break
+			}
+		}
+		require.NotZero(t, clTemplateID, "should find a cover letter template")
+
+		pdfPath, err := svc.PreviewTemplate(ctx, clTemplateID)
+		require.NoError(t, err)
+
+		// Verify file exists.
+		info, err := os.Stat(pdfPath)
+		require.NoError(t, err)
+		assert.Greater(t, info.Size(), int64(0), "PDF should not be empty")
+
+		// Verify profile data appears.
+		text := extractPDFText(t, pdfPath)
+		assert.Contains(t, text, "Preview User", "profile name should appear in CL")
+		assert.Contains(t, text, "preview@test.com", "email should appear in CL")
+
+		// Verify placeholder substitutions (variables become [variable_name]).
+		assert.Contains(t, text, "[hiring_manager]",
+			"hiring_manager placeholder should appear")
+		assert.Contains(t, text, "[signer_name]",
+			"signer_name placeholder should appear")
+	})
+
+	t.Run("invalid template ID returns error", func(t *testing.T) {
+		_, err := svc.PreviewTemplate(ctx, 0)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "template ID is required")
+	})
+
+	t.Run("nonexistent template returns error", func(t *testing.T) {
+		_, err := svc.PreviewTemplate(ctx, 99999)
+		require.Error(t, err)
+	})
+}
+
 // TestTemplate_WorkHistoryLoopMultipleEntries (T035) verifies that
 // a work_history_loop iterates over multiple work entries and renders
 // sub-elements (title, dates, bullets) in the correct per-entry layout.
@@ -1090,4 +1471,251 @@ func TestTemplate_WorkHistoryLoopMultipleEntries(t *testing.T) {
 	require.NotEqual(t, -1, expIdx, "EXPERIENCE heading should be found")
 	assert.Less(t, expIdx, gammaIdx,
 		"EXPERIENCE heading should appear before first entry")
+}
+
+// TestTemplate_ExportImportRoundTrip (T070) verifies that exporting a
+// template to JSON and importing it back produces an identical structure.
+func TestTemplate_ExportImportRoundTrip(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+
+	templateSvc := service.NewTemplateService(store)
+
+	// Create a template with multiple elements including nested children.
+	tmpl, err := store.CreateDocumentTemplate(ctx, domain.DocumentTemplateInput{
+		Name:         "Round-Trip Test",
+		Description:  "Export/import round-trip test",
+		TemplateType: domain.TemplateTypeResume,
+		MarginTop:    54.0,
+		MarginBottom: 54.0,
+		MarginLeft:   72.0,
+		MarginRight:  72.0,
+	})
+	require.NoError(t, err)
+
+	// Add a profile header.
+	_, err = store.CreateTemplateElement(ctx, tmpl.ID, domain.TemplateElementInput{
+		ElementType: domain.ElementProfileHeader,
+		Config: mustJSON(pdf.ProfileHeaderConfig{
+			NameFontSize: 18.0, DetailFontSize: 10.0,
+			Alignment: "center", SpaceAfter: 6.0,
+		}),
+	})
+	require.NoError(t, err)
+
+	// Add a section heading.
+	_, err = store.CreateTemplateElement(ctx, tmpl.ID, domain.TemplateElementInput{
+		ElementType: domain.ElementSectionHeading,
+		Config: mustJSON(pdf.SectionHeadingConfig{
+			Text: "Experience", FontSize: 11.0, Uppercase: true,
+			Underline: true, SpaceBefore: 10.0, SpaceAfter: 4.0,
+			UnderlineWeight: 0.5, DataBinding: "work_history",
+		}),
+	})
+	require.NoError(t, err)
+
+	// Add a work history loop with child elements.
+	loop, err := store.CreateTemplateElement(ctx, tmpl.ID, domain.TemplateElementInput{
+		ElementType: domain.ElementWorkHistoryLoop,
+		Config:      mustJSON(pdf.WorkHistoryLoopConfig{EntryGap: 8.0}),
+	})
+	require.NoError(t, err)
+
+	_, err = store.CreateTemplateElement(ctx, tmpl.ID, domain.TemplateElementInput{
+		ElementType: domain.ElementWorkTitle,
+		Config:      mustJSON(pdf.WorkTitleConfig{FontSize: 11.0, FontStyle: "bold", SpaceAfter: 2.0}),
+		ParentID:    &loop.ID,
+	})
+	require.NoError(t, err)
+
+	_, err = store.CreateTemplateElement(ctx, tmpl.ID, domain.TemplateElementInput{
+		ElementType: domain.ElementWorkBullets,
+		Config:      mustJSON(pdf.WorkBulletsConfig{FontSize: 10.0, Indent: 18.0, BulletChar: "\u2022"}),
+		ParentID:    &loop.ID,
+	})
+	require.NoError(t, err)
+
+	// Export to a temp file.
+	tmpFile := t.TempDir() + "/exported-template.json"
+	err = templateSvc.ExportTemplate(ctx, tmpl.ID, tmpFile)
+	require.NoError(t, err)
+
+	// Verify the file is valid JSON.
+	data, err := os.ReadFile(tmpFile)
+	require.NoError(t, err)
+
+	var exported domain.TemplateDetail
+	err = json.Unmarshal(data, &exported)
+	require.NoError(t, err)
+	assert.Equal(t, "Round-Trip Test", exported.Name)
+	assert.Equal(t, "Export/import round-trip test", exported.Description)
+	assert.Equal(t, domain.TemplateTypeResume, exported.TemplateType)
+	assert.Len(t, exported.Elements, 5, "should have 5 elements (header + heading + loop + 2 children)")
+
+	// Import from the file.
+	imported, err := templateSvc.ImportTemplate(ctx, tmpFile)
+	require.NoError(t, err)
+	assert.NotEqual(t, tmpl.ID, imported.ID, "imported template should have a new ID")
+	assert.Equal(t, "Round-Trip Test", imported.Name)
+	assert.Equal(t, domain.TemplateTypeResume, imported.TemplateType)
+
+	// Fetch the full detail of the imported template.
+	importedDetail, err := store.GetDocumentTemplate(ctx, imported.ID)
+	require.NoError(t, err)
+	assert.Len(t, importedDetail.Elements, 5, "imported should have 5 elements")
+
+	// Verify element types match in order.
+	expectedTypes := []string{
+		domain.ElementProfileHeader,
+		domain.ElementSectionHeading,
+		domain.ElementWorkHistoryLoop,
+		domain.ElementWorkTitle,
+		domain.ElementWorkBullets,
+	}
+	for i, el := range importedDetail.Elements {
+		assert.Equal(t, expectedTypes[i], el.ElementType, "element %d type mismatch", i)
+	}
+
+	// Verify parent relationships are preserved.
+	// The loop should be a top-level element.
+	var importedLoop *domain.TemplateElement
+	for i, el := range importedDetail.Elements {
+		if el.ElementType == domain.ElementWorkHistoryLoop {
+			importedLoop = &importedDetail.Elements[i]
+			break
+		}
+	}
+	require.NotNil(t, importedLoop, "should find work_history_loop")
+	assert.Nil(t, importedLoop.ParentID, "loop should be top-level")
+
+	// Children should reference the imported loop's ID.
+	for _, el := range importedDetail.Elements {
+		if el.ElementType == domain.ElementWorkTitle || el.ElementType == domain.ElementWorkBullets {
+			require.NotNil(t, el.ParentID, "%s should have a parent", el.ElementType)
+			assert.Equal(t, importedLoop.ID, *el.ParentID, "%s should be child of loop", el.ElementType)
+		}
+	}
+
+	// Verify config data round-trips correctly.
+	for _, el := range importedDetail.Elements {
+		if el.ElementType == domain.ElementSectionHeading {
+			var cfg pdf.SectionHeadingConfig
+			err := json.Unmarshal([]byte(el.Config), &cfg)
+			require.NoError(t, err)
+			assert.Equal(t, "Experience", cfg.Text)
+			assert.Equal(t, true, cfg.Uppercase)
+			assert.Equal(t, 11.0, cfg.FontSize)
+			break
+		}
+	}
+
+	// Import should create a non-built-in template.
+	assert.False(t, importedDetail.IsBuiltin, "imported template should not be built-in")
+}
+
+// TestTemplate_ExportImportBuiltin (T070) verifies that a built-in
+// template can be exported and imported back as a user template.
+func TestTemplate_ExportImportBuiltin(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+
+	templateSvc := service.NewTemplateService(store)
+
+	// Export the built-in Professional template (ID=1).
+	tmpFile := t.TempDir() + "/builtin-export.json"
+	err := templateSvc.ExportTemplate(ctx, 1, tmpFile)
+	require.NoError(t, err)
+
+	// Import it.
+	imported, err := templateSvc.ImportTemplate(ctx, tmpFile)
+	require.NoError(t, err)
+	assert.Equal(t, "Professional", imported.Name)
+	assert.False(t, imported.IsBuiltin, "imported should be user template, not built-in")
+
+	// Get the original and imported details.
+	originalDetail, err := store.GetDocumentTemplate(ctx, 1)
+	require.NoError(t, err)
+
+	importedDetail, err := store.GetDocumentTemplate(ctx, imported.ID)
+	require.NoError(t, err)
+
+	// Should have the same number of elements.
+	assert.Equal(t, len(originalDetail.Elements), len(importedDetail.Elements),
+		"imported should have same element count as original")
+
+	// Element types should match in order.
+	for i := range originalDetail.Elements {
+		assert.Equal(t, originalDetail.Elements[i].ElementType, importedDetail.Elements[i].ElementType,
+			"element %d type mismatch", i)
+	}
+}
+
+// TestTemplate_ImportInvalidFile (T070) verifies that importing invalid
+// files returns appropriate errors.
+func TestTemplate_ImportInvalidFile(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+
+	templateSvc := service.NewTemplateService(store)
+
+	t.Run("nonexistent file", func(t *testing.T) {
+		_, err := templateSvc.ImportTemplate(ctx, "/nonexistent/path.json")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "import template: read:")
+	})
+
+	t.Run("invalid JSON", func(t *testing.T) {
+		tmpFile := t.TempDir() + "/bad.json"
+		err := os.WriteFile(tmpFile, []byte("not json"), 0644)
+		require.NoError(t, err)
+
+		_, err = templateSvc.ImportTemplate(ctx, tmpFile)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "import template: parse:")
+	})
+
+	t.Run("missing name", func(t *testing.T) {
+		tmpFile := t.TempDir() + "/no-name.json"
+		data := `{"template_type": "resume", "elements": []}`
+		err := os.WriteFile(tmpFile, []byte(data), 0644)
+		require.NoError(t, err)
+
+		_, err = templateSvc.ImportTemplate(ctx, tmpFile)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "name is required")
+	})
+
+	t.Run("invalid template type", func(t *testing.T) {
+		tmpFile := t.TempDir() + "/bad-type.json"
+		data := `{"name": "Test", "template_type": "unknown", "elements": []}`
+		err := os.WriteFile(tmpFile, []byte(data), 0644)
+		require.NoError(t, err)
+
+		_, err = templateSvc.ImportTemplate(ctx, tmpFile)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid template type")
+	})
+
+	t.Run("invalid element type", func(t *testing.T) {
+		tmpFile := t.TempDir() + "/bad-elem.json"
+		data := `{"name": "Test", "template_type": "resume", "elements": [{"element_type": "bogus", "config": "{}"}]}`
+		err := os.WriteFile(tmpFile, []byte(data), 0644)
+		require.NoError(t, err)
+
+		_, err = templateSvc.ImportTemplate(ctx, tmpFile)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid element type")
+	})
+
+	t.Run("incompatible element type", func(t *testing.T) {
+		tmpFile := t.TempDir() + "/incompatible.json"
+		// body_text is a cover letter element, not resume.
+		data := `{"name": "Test", "template_type": "resume", "elements": [{"element_type": "body_text", "config": "{}"}]}`
+		err := os.WriteFile(tmpFile, []byte(data), 0644)
+		require.NoError(t, err)
+
+		_, err = templateSvc.ImportTemplate(ctx, tmpFile)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not compatible")
+	})
 }

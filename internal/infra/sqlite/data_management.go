@@ -115,6 +115,12 @@ func (s *Store) ExportAllData(ctx context.Context) (domain.ExportData, error) {
 		return domain.ExportData{}, fmt.Errorf("export: skill_lens_tags: %w", err)
 	}
 
+	// Templates (user-created only; built-in templates are seeded by migrations)
+	data.Templates, err = s.exportTemplates(ctx)
+	if err != nil {
+		return domain.ExportData{}, fmt.Errorf("export: templates: %w", err)
+	}
+
 	return data, nil
 }
 
@@ -208,6 +214,7 @@ func (s *Store) ImportAllData(ctx context.Context, data domain.ExportData) error
 	}
 
 	// Truncate all tables in reverse dependency order.
+	// Template tables are handled separately below to preserve built-in templates.
 	tables := []string{
 		"status_history",
 		"job_application",
@@ -240,6 +247,17 @@ func (s *Store) ImportAllData(ctx context.Context, data domain.ExportData) error
 		"work_history_entry",
 		"profile_link",
 		"user_profile",
+	}
+
+	// Delete user-created template elements and templates, preserving built-in ones.
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM template_element WHERE template_id IN
+		 (SELECT id FROM document_template WHERE is_builtin = 0)`); err != nil {
+		return fmt.Errorf("import: truncate user template_element: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM document_template WHERE is_builtin = 0`); err != nil {
+		return fmt.Errorf("import: truncate user document_template: %w", err)
 	}
 
 	for _, table := range tables {
@@ -358,6 +376,15 @@ func (s *Store) ImportAllData(ctx context.Context, data domain.ExportData) error
 		}
 	}
 
+	// Insert user-created templates with their elements.
+	// Built-in templates already exist from migrations; only
+	// user templates are exported/imported.
+	for _, tmplDetail := range data.Templates {
+		if err := s.importTemplateDetail(ctx, tx, tmplDetail); err != nil {
+			return err
+		}
+	}
+
 	// Re-enable foreign keys.
 	if _, err := tx.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
 		return fmt.Errorf("import: re-enable FK: %w", err)
@@ -368,6 +395,29 @@ func (s *Store) ImportAllData(ctx context.Context, data domain.ExportData) error
 	}
 
 	return nil
+}
+
+// exportTemplates returns all user-created templates with their elements.
+// Built-in templates are excluded since they are seeded by migrations.
+func (s *Store) exportTemplates(ctx context.Context) ([]domain.TemplateDetail, error) {
+	templates, err := s.ListDocumentTemplates(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	details := make([]domain.TemplateDetail, 0)
+	for _, t := range templates {
+		if t.IsBuiltin {
+			continue
+		}
+		detail, err := s.GetDocumentTemplate(ctx, t.ID)
+		if err != nil {
+			return nil, fmt.Errorf("template %d: %w", t.ID, err)
+		}
+		details = append(details, detail)
+	}
+
+	return details, nil
 }
 
 // --- Import helper methods ---
@@ -718,6 +768,50 @@ func (s *Store) importStatusChange(ctx context.Context, tx *sql.Tx, sc domain.St
 	)
 	if err != nil {
 		return fmt.Errorf("import: status_history %d: %w", sc.ID, err)
+	}
+	return nil
+}
+
+func (s *Store) importTemplateDetail(ctx context.Context, tx *sql.Tx, detail domain.TemplateDetail) error {
+	isBuiltin := 0
+	if detail.IsBuiltin {
+		isBuiltin = 1
+	}
+	_, err := tx.ExecContext(ctx,
+		`INSERT INTO document_template
+		 (id, name, description, template_type, is_builtin,
+		  margin_top, margin_bottom, margin_left, margin_right,
+		  created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		detail.ID, detail.Name, detail.Description, detail.TemplateType,
+		isBuiltin, detail.MarginTop, detail.MarginBottom,
+		detail.MarginLeft, detail.MarginRight,
+		detail.CreatedAt, detail.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("import: document_template %d: %w", detail.ID, err)
+	}
+
+	for _, el := range detail.Elements {
+		if err := s.importTemplateElement(ctx, tx, el); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Store) importTemplateElement(ctx context.Context, tx *sql.Tx, el domain.TemplateElement) error {
+	_, err := tx.ExecContext(ctx,
+		`INSERT INTO template_element
+		 (id, template_id, parent_id, element_type, config,
+		  sort_order, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		el.ID, el.TemplateID, el.ParentID, el.ElementType, el.Config,
+		el.SortOrder, el.CreatedAt, el.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("import: template_element %d: %w", el.ID, err)
 	}
 	return nil
 }

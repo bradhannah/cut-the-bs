@@ -2,6 +2,8 @@
   import { onMount, onDestroy } from "svelte";
   import {
     getDocumentTemplate,
+    previewTemplate,
+    openFile,
     addToast,
   } from "../services/api";
   import {
@@ -19,6 +21,7 @@
 
   let loading = true;
   let error = "";
+  let previewing = false;
 
   $: templateId = params.id ? parseInt(params.id, 10) : null;
 
@@ -48,6 +51,19 @@
       loading = false;
     }
   }
+
+  async function handlePreview(): Promise<void> {
+    if (!templateId || previewing) return;
+    previewing = true;
+    try {
+      const pdfPath = await previewTemplate(templateId);
+      await openFile(pdfPath);
+    } catch (e: any) {
+      addToast("error", e?.message || "Preview failed.");
+    } finally {
+      previewing = false;
+    }
+  }
 </script>
 
 {#if loading}
@@ -69,6 +85,14 @@
       <span class="builtin-badge">Built-in</span>
     {/if}
     <span class="header-spacer"></span>
+    <button
+      class="btn btn-small btn-preview"
+      on:click={handlePreview}
+      disabled={previewing}
+      title="Generate a preview PDF and open it"
+    >
+      {previewing ? "Generating..." : "Preview PDF"}
+    </button>
     {#if $saveStatus === "saving"}
       <span class="save-indicator save-saving">Saving...</span>
     {:else if $saveStatus === "saved"}
@@ -166,6 +190,27 @@
 
   .header-spacer {
     flex: 1;
+  }
+
+  .btn-preview {
+    background-color: #2a5a3a;
+    color: #c0e0c0;
+    font-size: 0.8rem;
+    padding: 5px 14px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.15s;
+  }
+
+  .btn-preview:hover:not(:disabled) {
+    background-color: #3a6a4a;
+  }
+
+  .btn-preview:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .save-indicator {

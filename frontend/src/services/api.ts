@@ -1217,6 +1217,10 @@ export async function previewTemplate(templateID: number): Promise<string> {
   return call<string>("PreviewTemplate", templateID);
 }
 
+export async function openFile(filePath: string): Promise<void> {
+  await call<void>("OpenFile", filePath);
+}
+
 // --- Data Management Types ---
 
 export interface ImportResult {
