@@ -9,22 +9,31 @@ export const defaultConfigs: Record<string, string> = {
     alignment: "center",
     link_separator: " | ",
     show_links: true,
+    show_links_inline: false,
     space_after: 6,
   }),
   role_descriptors: JSON.stringify({
     separator: " | ",
-    font_style: "italic",
+    // "normal" (not italic) matches the Professional template and renders cleaner.
+    font_style: "normal",
     font_size: 10,
+    alignment: "center",
     space_after: 4,
   }),
   professional_summary: JSON.stringify({
+    show_master: true,
+    show_bullet_summaries: true,
+    enable_bullets: true,
     bullet_char: "\u2022",
     font_size: 10,
+    space_before: 0,
     space_after: 2,
   }),
   skills: JSON.stringify({
     font_size: 10,
     group_by_category: true,
+    // Makes category labels render bold — matches Professional template.
+    category_font_style: "bold",
     include_legacy: true,
     legacy_suffix: " (Legacy)",
     skill_separator: ", ",
@@ -32,18 +41,19 @@ export const defaultConfigs: Record<string, string> = {
   }),
   core_expertise: JSON.stringify({
     font_size: 10,
-    separator: " \u00B7 ",
-    columns: 3,
+    separator: " | ",
+    alignment: "center",
     space_after: 4,
   }),
   section_heading: JSON.stringify({
     text: "Section Title",
     font_size: 12,
-    bold: true,
+    // Go reads font_style ("bold"/"normal"/"italic"), NOT a boolean "bold" field.
+    font_style: "bold",
     uppercase: true,
     underline: true,
     underline_weight: 0.5,
-    space_before: 8,
+    space_before: 10,
     space_after: 4,
     data_binding: "",
   }),
@@ -61,15 +71,20 @@ export const defaultConfigs: Record<string, string> = {
     space_after: 4,
   }),
   work_history_loop: JSON.stringify({ entry_gap: 8 }),
-  education_loop: JSON.stringify({ entry_gap: 4 }),
-  certifications_loop: JSON.stringify({ entry_gap: 2 }),
+  // 0 gap matches Professional — edu/cert entries are tight by design.
+  education_loop: JSON.stringify({ entry_gap: 0 }),
+  certifications_loop: JSON.stringify({ entry_gap: 0 }),
   work_title: JSON.stringify({
-    font_size: 11,
+    font_size: 10,
     font_style: "bold",
-    include_employer: false,
+    title_row_layout: "inline_with_dates",
+    // Show employer inline with job title — matches Professional template.
+    include_employer: true,
     employer_separator: " - ",
-    employer_font_style: "normal",
-    space_after: 0,
+    employer_font_style: "italic",
+    // Space between title row and next element (dates/bullets).
+    // 13pt prevents dates from colliding with the title text.
+    space_after: 13,
   }),
   work_employer: JSON.stringify({
     font_size: 10,
@@ -77,9 +92,8 @@ export const defaultConfigs: Record<string, string> = {
     space_after: 0,
   }),
   work_dates: JSON.stringify({
-    font_size: 10,
+    font_size: 9,
     alignment: "right",
-    space_after: 2,
   }),
   work_summary: JSON.stringify({
     font_size: 10,
@@ -89,40 +103,38 @@ export const defaultConfigs: Record<string, string> = {
   work_bullets: JSON.stringify({
     bullet_char: "\u2022",
     font_size: 10,
-    indent: 15,
-    space_after: 2,
+    font_style: "normal",
+    indent: 12,
+    bullet_sym_width: 10,
   }),
   work_outcomes: JSON.stringify({
     bullet_char: "\u2022",
     font_size: 10,
-    indent: 15,
+    font_style: "normal",
+    indent: 12,
+    bullet_sym_width: 10,
     outcomes_label: "Key Outcomes:",
-    space_after: 2,
+    outcomes_gap: 2,
   }),
   edu_credential: JSON.stringify({
     font_size: 10,
     font_style: "bold",
-    space_after: 0,
   }),
   edu_institution: JSON.stringify({
     font_size: 10,
     font_style: "normal",
-    space_after: 0,
   }),
   edu_date: JSON.stringify({
-    font_size: 10,
+    font_size: 9,
     alignment: "right",
-    space_after: 0,
   }),
   cert_name: JSON.stringify({
     font_size: 10,
     font_style: "bold",
-    space_after: 0,
   }),
   cert_detail: JSON.stringify({
     font_size: 10,
     font_style: "normal",
-    space_after: 0,
   }),
   // Cover letter types
   body_text: JSON.stringify({
@@ -246,6 +258,29 @@ export const validLoopChildren: Record<string, Set<string>> = {
     "cert_name", "cert_detail",
     "section_heading", "horizontal_rule", "spacer", "static_text",
   ]),
+};
+
+// Loop-specific child elements shown in dynamic "* Items" categories.
+// Shared formatting types are intentionally excluded (they remain in
+// the Formatting palette category only).
+export const loopSpecificChildren: Record<string, string[]> = {
+  work_history_loop: [
+    "work_title",
+    "work_employer",
+    "work_dates",
+    "work_summary",
+    "work_bullets",
+    "work_outcomes",
+  ],
+  education_loop: ["edu_credential", "edu_institution", "edu_date"],
+  certifications_loop: ["cert_name", "cert_detail"],
+};
+
+// Labels for dynamic palette categories shown when loop containers exist.
+export const loopCategoryNames: Record<string, string> = {
+  work_history_loop: "Work History Items",
+  education_loop: "Education Items",
+  certifications_loop: "Certification Items",
 };
 
 // Loop iteration labels for UI display.

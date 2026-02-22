@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -193,7 +194,7 @@ func dispatchElement(rc *renderContext, el domain.TemplateElement) error {
 // SpaceBefore, SpaceAfter, UnderlineWeight) to allow full customisation.
 //
 // When DataBinding is set, the heading is skipped entirely if the
-// bound data source is empty — matching the hardcoded templates.
+// bound data source is empty — matching legacy built-in behavior.
 func renderSectionHeadingElement(rc *renderContext, el domain.TemplateElement) error {
 	var cfg SectionHeadingConfig
 	if err := json.Unmarshal([]byte(el.Config), &cfg); err != nil {
@@ -210,7 +211,7 @@ func renderSectionHeadingElement(rc *renderContext, el domain.TemplateElement) e
 		fontSize = fontSizeSection
 	}
 
-	if err := checkPageBreak(rc.pdf, &rc.y, fontSize+cfg.SpaceBefore+cfg.SpaceAfter+4); err != nil {
+	if err := checkPageBreak(rc.pdf, &rc.y, fontSize+cfg.SpaceBefore+cfg.SpaceAfter+4, rc.marginBottom, rc.marginTop); err != nil {
 		return err
 	}
 
@@ -323,8 +324,41 @@ func renderStaticTextElement(rc *renderContext, el domain.TemplateElement) error
 		return err
 	}
 
+	var x float64
+	switch cfg.Alignment {
+	case "right":
+		w, err := rc.pdf.MeasureTextWidth(text)
+		if err != nil {
+			return fmt.Errorf("measure static text width: %w", err)
+		}
+		x = rc.marginLeft + rc.usableWidth - w
+		if x < rc.marginLeft {
+			x = rc.marginLeft
+		}
+	case "center":
+		w, err := rc.pdf.MeasureTextWidth(text)
+		if err != nil {
+			return fmt.Errorf("measure static text width: %w", err)
+		}
+		x = rc.marginLeft + (rc.usableWidth-w)/2
+		if x < rc.marginLeft {
+			x = rc.marginLeft
+		}
+	default:
+		x = rc.marginLeft
+	}
+
 	var err error
-	rc.y, err = renderWrappedText(rc.pdf, text, rc.marginLeft, rc.y, rc.usableWidth, cfg.FontSize)
+	rc.y, err = renderWrappedText(
+		rc.pdf,
+		text,
+		x,
+		rc.y,
+		rc.usableWidth,
+		cfg.FontSize,
+		rc.marginBottom,
+		rc.marginTop,
+	)
 	if err != nil {
 		return fmt.Errorf("render static text: %w", err)
 	}
@@ -352,22 +386,21 @@ func renderProfileHeaderElement(rc *renderContext, el domain.TemplateElement) er
 	return renderProfileHeaderCentered(rc, cfg)
 }
 
-// renderProfileHeaderCentered delegates to the shared RenderProfileHeader
-// from header.go to guarantee byte-identical output with the hardcoded
-// professional template. RenderProfileHeader uses pdf.GetY() as the
-// starting position, which matches the hardcoded pipeline where AddPage()
-// sets Y to the gopdf default (10).
+// renderProfileHeaderCentered renders the centered profile header via
+// the shared header helper.
 func renderProfileHeaderCentered(rc *renderContext, cfg ProfileHeaderConfig) error {
 	headerCfg := HeaderConfig{
-		NameFontSize:   cfg.NameFontSize,
-		DetailFontSize: cfg.DetailFontSize,
-		LinkSeparator:  cfg.LinkSeparator,
-		MarginLeft:     rc.marginLeft,
-		PageWidth:      rc.usableWidth,
+		NameFontSize:    cfg.NameFontSize,
+		DetailFontSize:  cfg.DetailFontSize,
+		LinkSeparator:   cfg.LinkSeparator,
+		MarginLeft:      rc.marginLeft,
+		PageWidth:       rc.usableWidth,
+		ShowLinks:       cfg.ShowLinks,
+		ShowLinksInline: cfg.ShowLinksInline,
+		SpaceAfter:      cfg.SpaceAfter,
 	}
 
-	// Do NOT set pdf.SetY — let RenderProfileHeader use pdf.GetY()
-	// which matches the hardcoded renderProfessional behavior.
+	rc.pdf.SetY(rc.y)
 	y, err := RenderProfileHeader(rc.pdf, rc.req.Profile, rc.req.Links, headerCfg)
 	if err != nil {
 		return err
@@ -377,21 +410,73 @@ func renderProfileHeaderCentered(rc *renderContext, cfg ProfileHeaderConfig) err
 	return nil
 }
 
-// renderProfileHeaderLeft reproduces the Modern header — left-aligned
-// name, contact+links on one line with dot separator. Delegates to
-// the shared renderModernHeader.
+// renderProfileHeaderLeft renders a left-aligned profile header.
 func renderProfileHeaderLeft(rc *renderContext, cfg ProfileHeaderConfig) error {
-	y, err := renderModernHeader(rc.pdf, rc.req.Profile, rc.req.Links, rc.y)
-	if err != nil {
+	if rc.req.Profile.FullName != "" {
+		if err := setFont(rc.pdf, "LiberationSans-Bold", cfg.NameFontSize); err != nil {
+			return err
+		}
+		rc.pdf.SetX(rc.marginLeft)
+		rc.pdf.SetY(rc.y)
+		if err := rc.pdf.Cell(nil, rc.req.Profile.FullName); err != nil {
+			return err
+		}
+		rc.y += cfg.NameFontSize + 6
+	}
+
+	if err := setFont(rc.pdf, "LiberationSans-Regular", cfg.DetailFontSize); err != nil {
 		return err
 	}
-	rc.y = y
+
+	renderLeftDetailLine := func(line string) error {
+		if strings.TrimSpace(line) == "" {
+			return nil
+		}
+		y, err := renderWrappedText(
+			rc.pdf,
+			line,
+			rc.marginLeft,
+			rc.y,
+			rc.usableWidth,
+			cfg.DetailFontSize,
+			rc.marginBottom,
+			rc.marginTop,
+		)
+		if err != nil {
+			return err
+		}
+		rc.y = y + 3
+		return nil
+	}
+
+	contactParts := buildContactLine(rc.req.Profile)
+	if cfg.ShowLinks && cfg.ShowLinksInline {
+		for _, link := range rc.req.Links {
+			contactParts = append(contactParts, link.URL)
+		}
+	}
+	if len(contactParts) > 0 {
+		if err := renderLeftDetailLine(strings.Join(contactParts, cfg.LinkSeparator)); err != nil {
+			return err
+		}
+	}
+
+	if cfg.ShowLinks && !cfg.ShowLinksInline && len(rc.req.Links) > 0 {
+		linkParts := make([]string, 0, len(rc.req.Links))
+		for _, link := range rc.req.Links {
+			linkParts = append(linkParts, link.URL)
+		}
+		if err := renderLeftDetailLine(strings.Join(linkParts, cfg.LinkSeparator)); err != nil {
+			return err
+		}
+	}
+
+	rc.y += cfg.SpaceAfter
 	return nil
 }
 
-// renderRoleDescriptorsElement renders the role descriptor bar.
-// Delegates to the shared renderDescriptorBar (professional, centered)
-// or renderModernDescriptors (modern, left-aligned).
+// renderRoleDescriptorsElement renders role descriptors using configured
+// font, separator, and alignment.
 func renderRoleDescriptorsElement(rc *renderContext, el domain.TemplateElement) error {
 	if len(rc.req.Descriptors) == 0 {
 		return nil
@@ -402,28 +487,42 @@ func renderRoleDescriptorsElement(rc *renderContext, el domain.TemplateElement) 
 		return fmt.Errorf("parse role_descriptors config: %w", err)
 	}
 
-	if cfg.Alignment == "center" {
-		// Professional style: centered, pipe-separated, regular font.
-		y, err := renderDescriptorBar(rc.pdf, rc.req.Descriptors, rc.y)
-		if err != nil {
-			return err
-		}
-		rc.y = y
-	} else {
-		// Modern style: left-aligned, dot-separated, italic font.
-		y, err := renderModernDescriptors(rc.pdf, rc.req.Descriptors, rc.y)
-		if err != nil {
-			return err
-		}
-		rc.y = y
+	if err := setFont(rc.pdf, fontNameFromStyle(cfg.FontStyle), cfg.FontSize); err != nil {
+		return err
 	}
+
+	titles := make([]string, 0, len(rc.req.Descriptors))
+	for _, d := range rc.req.Descriptors {
+		titles = append(titles, d.Title)
+	}
+	line := strings.Join(titles, cfg.Separator)
+
+	x := rc.marginLeft
+	if cfg.Alignment == "center" {
+		w, err := rc.pdf.MeasureTextWidth(line)
+		if err != nil {
+			return fmt.Errorf("measure descriptor width: %w", err)
+		}
+		x = rc.marginLeft + (rc.usableWidth-w)/2
+		if x < rc.marginLeft {
+			x = rc.marginLeft
+		}
+	}
+
+	rc.pdf.SetX(x)
+	rc.pdf.SetY(rc.y)
+	if err := rc.pdf.Cell(nil, line); err != nil {
+		return fmt.Errorf("render descriptors: %w", err)
+	}
+
+	rc.y += cfg.FontSize + cfg.SpaceAfter
 
 	return nil
 }
 
 // renderProfSummaryElement renders the professional summary section.
-// Master summary is rendered as a paragraph, others as bullet points.
-// Delegates to the shared renderWrappedText and renderBulletPoint.
+// Master and non-master summaries can be independently enabled,
+// and non-master summaries can render with or without bullet markers.
 func renderProfSummaryElement(rc *renderContext, el domain.TemplateElement) error {
 	if len(rc.req.Summaries) == 0 {
 		return nil
@@ -438,41 +537,96 @@ func renderProfSummaryElement(rc *renderContext, el domain.TemplateElement) erro
 		return err
 	}
 
-	// Render master summary as a plain paragraph.
-	for _, sum := range rc.req.Summaries {
-		if sum.BodyText == "" {
-			continue
+	showMaster := boolOrDefault(cfg.ShowMaster, true)
+	showBulletSummaries := boolOrDefault(cfg.ShowBulletSummaries, true)
+	enableBullets := boolOrDefault(cfg.EnableBullets, true)
+
+	bulletChar := cfg.BulletChar
+	if bulletChar == "" {
+		bulletChar = "•"
+	}
+	bulletChar = decodeEscapedSymbol(bulletChar)
+
+	started := false
+	ensureStarted := func() {
+		if !started {
+			rc.y += cfg.SpaceBefore
+			started = true
 		}
-		isMaster := rc.req.MasterSummaryID != nil && sum.ID == *rc.req.MasterSummaryID
-		if isMaster {
+	}
+
+	if showMaster {
+		for _, sum := range rc.req.Summaries {
+			if sum.BodyText == "" {
+				continue
+			}
+			isMaster := rc.req.MasterSummaryID != nil && sum.ID == *rc.req.MasterSummaryID
+			if !isMaster {
+				continue
+			}
+
+			ensureStarted()
 			var err error
-			rc.y, err = renderWrappedText(rc.pdf, sum.BodyText, rc.marginLeft, rc.y, rc.usableWidth, cfg.FontSize)
+			rc.y, err = renderWrappedText(
+				rc.pdf,
+				sum.BodyText,
+				rc.marginLeft,
+				rc.y,
+				rc.usableWidth,
+				cfg.FontSize,
+				rc.marginBottom,
+				rc.marginTop,
+			)
 			if err != nil {
 				return fmt.Errorf("summary text: %w", err)
 			}
 		}
 	}
 
-	// Render non-master summaries as bullet points using the shared function.
-	for _, sum := range rc.req.Summaries {
-		if sum.BodyText == "" {
-			continue
-		}
-		isMaster := rc.req.MasterSummaryID != nil && sum.ID == *rc.req.MasterSummaryID
-		if !isMaster {
+	if showBulletSummaries {
+		for _, sum := range rc.req.Summaries {
+			if sum.BodyText == "" {
+				continue
+			}
+			isMaster := rc.req.MasterSummaryID != nil && sum.ID == *rc.req.MasterSummaryID
+			if isMaster {
+				continue
+			}
+
+			ensureStarted()
+			if enableBullets {
+				if err := renderConfigBullet(rc, sum.BodyText, cfg.FontSize, bulletChar, 12.0, 10.0); err != nil {
+					return fmt.Errorf("summary bullet: %w", err)
+				}
+				continue
+			}
+
 			var err error
-			rc.y, err = renderBulletPoint(rc.pdf, sum.BodyText, rc.y)
+			rc.y, err = renderWrappedText(
+				rc.pdf,
+				sum.BodyText,
+				rc.marginLeft,
+				rc.y,
+				rc.usableWidth,
+				cfg.FontSize,
+				rc.marginBottom,
+				rc.marginTop,
+			)
 			if err != nil {
-				return fmt.Errorf("summary bullet: %w", err)
+				return fmt.Errorf("summary paragraph: %w", err)
 			}
 		}
+	}
+
+	if started {
+		rc.y += cfg.SpaceAfter
 	}
 
 	return nil
 }
 
-// renderSkillsElement renders the skills section with category grouping.
-// Delegates to the shared renderSkillsSection.
+// renderSkillsElement renders skills using configurable grouping,
+// filtering, label style, and separator settings.
 func renderSkillsElement(rc *renderContext, el domain.TemplateElement) error {
 	if len(rc.req.Skills) == 0 {
 		return nil
@@ -483,19 +637,128 @@ func renderSkillsElement(rc *renderContext, el domain.TemplateElement) error {
 		return fmt.Errorf("parse skills config: %w", err)
 	}
 
-	filterLegacy := !cfg.IncludeLegacy
-	var err error
-	rc.y, err = renderSkillsSection(rc.pdf, rc.req.Skills, rc.req.SkillCategoryNames, rc.y, filterLegacy)
-	if err != nil {
-		return fmt.Errorf("skills: %w", err)
+	type catGroup struct {
+		categoryID int64
+		skills     []domain.Skill
+	}
+
+	filtered := make([]domain.Skill, 0, len(rc.req.Skills))
+	for _, skill := range rc.req.Skills {
+		if !cfg.IncludeLegacy && skill.IsLegacy {
+			continue
+		}
+		filtered = append(filtered, skill)
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+
+	if err := setFont(rc.pdf, "LiberationSans-Regular", cfg.FontSize); err != nil {
+		return err
+	}
+
+	buildSkillName := func(skill domain.Skill) string {
+		if skill.IsLegacy {
+			return skill.Name + cfg.LegacySuffix
+		}
+		return skill.Name
+	}
+
+	if !cfg.GroupByCategory {
+		names := make([]string, 0, len(filtered))
+		for _, skill := range filtered {
+			names = append(names, buildSkillName(skill))
+		}
+		var err error
+		rc.y, err = renderWrappedText(
+			rc.pdf,
+			strings.Join(names, cfg.SkillSeparator),
+			rc.marginLeft,
+			rc.y,
+			rc.usableWidth,
+			cfg.FontSize,
+			rc.marginBottom,
+			rc.marginTop,
+		)
+		if err != nil {
+			return fmt.Errorf("skills: %w", err)
+		}
+		return nil
+	}
+
+	grouped := make(map[int64]*catGroup)
+	order := make([]int64, 0)
+	for _, skill := range filtered {
+		g, ok := grouped[skill.CategoryID]
+		if !ok {
+			g = &catGroup{categoryID: skill.CategoryID}
+			grouped[skill.CategoryID] = g
+			order = append(order, skill.CategoryID)
+		}
+		g.skills = append(g.skills, skill)
+	}
+
+	lineHeight := cfg.FontSize + lineSpacing
+	for _, catID := range order {
+		group := grouped[catID]
+		if len(group.skills) == 0 {
+			continue
+		}
+
+		if err := checkPageBreak(rc.pdf, &rc.y, lineHeight, rc.marginBottom, rc.marginTop); err != nil {
+			return err
+		}
+
+		labelWidth := 0.0
+		catName := rc.req.SkillCategoryNames[catID]
+		if catName != "" {
+			if err := setFont(rc.pdf, fontNameFromStyle(cfg.CategoryFontStyle), cfg.FontSize); err != nil {
+				return err
+			}
+			label := catName + ": "
+			rc.pdf.SetX(rc.marginLeft)
+			rc.pdf.SetY(rc.y)
+			if err := rc.pdf.Cell(nil, label); err != nil {
+				return err
+			}
+			w, err := rc.pdf.MeasureTextWidth(label)
+			if err != nil {
+				return err
+			}
+			labelWidth = w
+		}
+
+		names := make([]string, 0, len(group.skills))
+		for _, skill := range group.skills {
+			names = append(names, buildSkillName(skill))
+		}
+
+		if err := setFont(rc.pdf, "LiberationSans-Regular", cfg.FontSize); err != nil {
+			return err
+		}
+
+		var err error
+		rc.y, err = renderWrappedTextHanging(
+			rc.pdf,
+			strings.Join(names, cfg.SkillSeparator),
+			rc.marginLeft,
+			labelWidth,
+			rc.y,
+			rc.usableWidth,
+			cfg.FontSize,
+			rc.marginBottom,
+			rc.marginTop,
+		)
+		if err != nil {
+			return fmt.Errorf("skills category %d: %w", catID, err)
+		}
 	}
 
 	return nil
 }
 
 // renderCoreExpertiseElement renders core expertise items as a
-// separator-joined inline list. Delegates to the shared
-// renderCoreExpertiseSection.
+// separator-joined list using configured alignment and spacing.
 func renderCoreExpertiseElement(rc *renderContext, el domain.TemplateElement) error {
 	if len(rc.req.CoreExpertise) == 0 {
 		return nil
@@ -506,11 +769,48 @@ func renderCoreExpertiseElement(rc *renderContext, el domain.TemplateElement) er
 		return fmt.Errorf("parse core_expertise config: %w", err)
 	}
 
+	labels := make([]string, 0, len(rc.req.CoreExpertise))
+	for _, item := range rc.req.CoreExpertise {
+		labels = append(labels, item.Label)
+	}
+	line := strings.Join(labels, cfg.Separator)
+
+	if err := setFont(rc.pdf, "LiberationSans-Regular", cfg.FontSize); err != nil {
+		return err
+	}
+
+	if cfg.Alignment == "center" {
+		w, err := rc.pdf.MeasureTextWidth(line)
+		if err == nil && w <= rc.usableWidth {
+			x := rc.marginLeft + (rc.usableWidth-w)/2
+			if x < rc.marginLeft {
+				x = rc.marginLeft
+			}
+			rc.pdf.SetX(x)
+			rc.pdf.SetY(rc.y)
+			if err := rc.pdf.Cell(nil, line); err != nil {
+				return fmt.Errorf("render core expertise: %w", err)
+			}
+			rc.y += cfg.FontSize + lineSpacing + cfg.SpaceAfter
+			return nil
+		}
+	}
+
 	var err error
-	rc.y, err = renderCoreExpertiseSection(rc.pdf, rc.req.CoreExpertise, rc.y)
+	rc.y, err = renderWrappedText(
+		rc.pdf,
+		line,
+		rc.marginLeft,
+		rc.y,
+		rc.usableWidth,
+		cfg.FontSize,
+		rc.marginBottom,
+		rc.marginTop,
+	)
 	if err != nil {
 		return fmt.Errorf("render core expertise: %w", err)
 	}
+	rc.y += cfg.SpaceAfter
 
 	return nil
 }
@@ -532,6 +832,7 @@ func renderWorkHistoryLoopElement(rc *renderContext, el domain.TemplateElement) 
 	}
 
 	children := rc.childMap[el.ID]
+	rc.y += cfg.SpaceBefore
 
 	for i, entry := range rc.req.WorkHistory {
 		if i > 0 {
@@ -544,6 +845,7 @@ func renderWorkHistoryLoopElement(rc *renderContext, el domain.TemplateElement) 
 			}
 		}
 	}
+	rc.y += cfg.SpaceAfter
 
 	return nil
 }
@@ -587,9 +889,7 @@ func dispatchWorkChild(
 }
 
 // renderWorkTitleElement renders the work entry title line, including
-// the employer (if configured) and the right-aligned date. This
-// delegates to the shared renderWorkEntry (professional) or
-// renderModernWorkEntry (modern) pattern.
+// the employer (if configured) and the date aligned per config.
 func renderWorkTitleElement(
 	rc *renderContext,
 	el domain.TemplateElement,
@@ -601,13 +901,24 @@ func renderWorkTitleElement(
 	}
 
 	lineHeight := cfg.FontSize + lineSpacing
-
-	if err := checkPageBreak(rc.pdf, &rc.y, lineHeight*2); err != nil {
-		return err
+	rowLayout := cfg.TitleRowLayout
+	if rowLayout == "" {
+		rowLayout = "inline_with_dates"
 	}
+	stackDatesBelow := rowLayout == "stack_dates_below"
 
 	// Find the dates config from sibling elements.
 	datesCfg := findWorkDatesConfig(rc, el)
+	requiresExtraDateLine := stackDatesBelow && datesCfg != nil
+
+	requiredHeight := lineHeight * 2
+	if requiresExtraDateLine {
+		requiredHeight = lineHeight * 3
+	}
+
+	if err := checkPageBreak(rc.pdf, &rc.y, requiredHeight, rc.marginBottom, rc.marginTop); err != nil {
+		return err
+	}
 
 	if cfg.IncludeEmployer && cfg.EmployerFontStyle == "italic" {
 		// Professional style: bold title + italic " — EmployerName".
@@ -692,7 +1003,7 @@ func renderWorkTitleElement(
 		}
 	}
 
-	// Date range right-aligned on the same line.
+	// Date range rendered either inline with title or on the next line.
 	if datesCfg != nil {
 		dateStr := formatDateRange(
 			entry.StartDate, entry.EndDate,
@@ -708,11 +1019,20 @@ func renderWorkTitleElement(
 			return err
 		}
 
-		rc.pdf.SetX(rc.marginLeft + rc.usableWidth - dateW)
-		rc.pdf.SetY(rc.y)
+		dateY := rc.y
+		if stackDatesBelow {
+			dateY += lineHeight
+		}
+
+		rc.pdf.SetX(workDatesX(rc, datesCfg.Alignment, dateW))
+		rc.pdf.SetY(dateY)
 		if err := rc.pdf.Cell(nil, dateStr); err != nil {
 			return err
 		}
+	}
+
+	if requiresExtraDateLine {
+		rc.y += lineHeight
 	}
 
 	// Advance Y by SpaceAfter.
@@ -721,6 +1041,17 @@ func renderWorkTitleElement(
 	rc.y += cfg.SpaceAfter
 
 	return nil
+}
+
+func workDatesX(rc *renderContext, alignment string, dateW float64) float64 {
+	switch alignment {
+	case "left":
+		return rc.marginLeft
+	case "center":
+		return rc.marginLeft + (rc.usableWidth-dateW)/2
+	default:
+		return rc.marginLeft + rc.usableWidth - dateW
+	}
 }
 
 // findWorkDatesConfig looks for a work_dates sibling element within
@@ -742,23 +1073,47 @@ func findWorkDatesConfig(rc *renderContext, titleEl domain.TemplateElement) *Wor
 	return nil
 }
 
-// renderWorkSummaryElement renders the optional entry summary as
-// italic wrapped text.
+// renderWorkSummaryElement renders the optional entry summary using
+// configurable font size and style.
 func renderWorkSummaryElement(
 	rc *renderContext,
-	_ domain.TemplateElement,
+	el domain.TemplateElement,
 	entry domain.WorkHistoryEntry,
 ) error {
-	if entry.Summary == "" {
+	if strings.TrimSpace(entry.Summary) == "" {
 		return nil
 	}
 
-	if err := setFont(rc.pdf, "LiberationSans-Italic", fontSizeBody); err != nil {
+	var cfg WorkSummaryConfig
+	if err := json.Unmarshal([]byte(el.Config), &cfg); err != nil {
+		return fmt.Errorf("parse work_summary config: %w", err)
+	}
+
+	fontSize := cfg.FontSize
+	if fontSize <= 0 {
+		fontSize = 10.0
+	}
+
+	fontStyle := strings.TrimSpace(cfg.FontStyle)
+	if fontStyle == "" {
+		fontStyle = "italic"
+	}
+
+	if err := setFont(rc.pdf, fontNameFromStyle(fontStyle), fontSize); err != nil {
 		return err
 	}
 
 	var err error
-	rc.y, err = renderWrappedText(rc.pdf, entry.Summary, rc.marginLeft, rc.y, rc.usableWidth, fontSizeBody)
+	rc.y, err = renderWrappedText(
+		rc.pdf,
+		entry.Summary,
+		rc.marginLeft,
+		rc.y,
+		rc.usableWidth,
+		fontSize,
+		rc.marginBottom,
+		rc.marginTop,
+	)
 	if err != nil {
 		return fmt.Errorf("entry summary: %w", err)
 	}
@@ -767,7 +1122,6 @@ func renderWorkSummaryElement(
 }
 
 // renderWorkBulletsElement renders primary bullets for a work entry.
-// Uses the shared renderBulletPoint to guarantee byte-identical output.
 func renderWorkBulletsElement(
 	rc *renderContext,
 	el domain.TemplateElement,
@@ -778,19 +1132,21 @@ func renderWorkBulletsElement(
 		return fmt.Errorf("parse work_bullets config: %w", err)
 	}
 
-	// Set font before the bullet loop, matching the hardcoded behavior
-	// which calls setFont("Regular", fontSizeBody) once before the loop.
-	if err := setFont(rc.pdf, "LiberationSans-Regular", cfg.FontSize); err != nil {
+	if err := setFont(rc.pdf, fontNameFromStyle(cfg.FontStyle), cfg.FontSize); err != nil {
 		return err
 	}
+
+	bulletChar := cfg.BulletChar
+	if bulletChar == "" {
+		bulletChar = "•"
+	}
+	bulletChar = decodeEscapedSymbol(bulletChar)
 
 	for _, bullet := range entry.Bullets {
 		if bullet.BulletType == domain.BulletTypeSecondary {
 			continue
 		}
-		var err error
-		rc.y, err = renderBulletPoint(rc.pdf, bullet.Text, rc.y)
-		if err != nil {
+		if err := renderConfigBullet(rc, bullet.Text, cfg.FontSize, bulletChar, cfg.Indent, cfg.BulletSymWidth); err != nil {
 			return err
 		}
 	}
@@ -799,8 +1155,7 @@ func renderWorkBulletsElement(
 }
 
 // renderWorkOutcomesElement renders secondary (outcome) bullets with
-// an "Outcomes:" label. Uses the shared renderBulletPoint for the
-// individual bullets to guarantee byte-identical output.
+// an "Outcomes:" label.
 func renderWorkOutcomesElement(
 	rc *renderContext,
 	el domain.TemplateElement,
@@ -830,7 +1185,7 @@ func renderWorkOutcomesElement(
 	if err := setFont(rc.pdf, "LiberationSans-Bold", cfg.FontSize); err != nil {
 		return err
 	}
-	if err := checkPageBreak(rc.pdf, &rc.y, cfg.FontSize+lineSpacing); err != nil {
+	if err := checkPageBreak(rc.pdf, &rc.y, cfg.FontSize+lineSpacing, rc.marginBottom, rc.marginTop); err != nil {
 		return err
 	}
 	rc.pdf.SetX(rc.marginLeft + cfg.Indent)
@@ -840,18 +1195,21 @@ func renderWorkOutcomesElement(
 	}
 	rc.y += cfg.FontSize + lineSpacing
 
-	// Render outcome bullets in italic using the shared renderBulletPoint.
-	if err := setFont(rc.pdf, "LiberationSans-Italic", cfg.FontSize); err != nil {
+	if err := setFont(rc.pdf, fontNameFromStyle(cfg.FontStyle), cfg.FontSize); err != nil {
 		return err
 	}
+
+	bulletChar := cfg.BulletChar
+	if bulletChar == "" {
+		bulletChar = "•"
+	}
+	bulletChar = decodeEscapedSymbol(bulletChar)
 
 	for _, bullet := range entry.Bullets {
 		if bullet.BulletType != domain.BulletTypeSecondary {
 			continue
 		}
-		var err error
-		rc.y, err = renderBulletPoint(rc.pdf, bullet.Text, rc.y)
-		if err != nil {
+		if err := renderConfigBullet(rc, bullet.Text, cfg.FontSize, bulletChar, cfg.Indent, cfg.BulletSymWidth); err != nil {
 			return err
 		}
 	}
@@ -859,9 +1217,8 @@ func renderWorkOutcomesElement(
 	return nil
 }
 
-// renderEducationLoopElement iterates over academic credentials.
-// Renders each entry individually via the shared renderAcademics
-// helper, applying configurable entry_gap spacing between entries.
+// renderEducationLoopElement iterates over academic credentials and
+// dispatches configured child elements per entry.
 func renderEducationLoopElement(rc *renderContext, el domain.TemplateElement) error {
 	if len(rc.req.Academics) == 0 {
 		return nil
@@ -872,23 +1229,158 @@ func renderEducationLoopElement(rc *renderContext, el domain.TemplateElement) er
 		return fmt.Errorf("parse education_loop config: %w", err)
 	}
 
+	children := rc.childMap[el.ID]
+	rc.y += cfg.SpaceBefore
+
 	for i, ac := range rc.req.Academics {
 		if i > 0 {
 			rc.y += cfg.EntryGap
 		}
-		var err error
-		rc.y, err = renderAcademics(rc.pdf, []domain.AcademicCredential{ac}, rc.y)
-		if err != nil {
-			return fmt.Errorf("education entry %q: %w", ac.FieldOfStudy, err)
+		for _, child := range children {
+			if err := dispatchEduChild(rc, child, ac); err != nil {
+				return fmt.Errorf("education entry %q, child %d (%s): %w",
+					ac.FieldOfStudy, child.ID, child.ElementType, err)
+			}
 		}
+	}
+	rc.y += cfg.SpaceAfter
+
+	return nil
+}
+
+func dispatchEduChild(
+	rc *renderContext,
+	el domain.TemplateElement,
+	ac domain.AcademicCredential,
+) error {
+	switch el.ElementType {
+	case domain.ElementEduCredential:
+		return renderEduCredentialElement(rc, el, ac)
+	case domain.ElementEduInstitution:
+		return renderEduInstitutionElement(rc, el, ac)
+	case domain.ElementEduDate:
+		return nil
+	case domain.ElementSectionHeading:
+		return renderSectionHeadingElement(rc, el)
+	case domain.ElementHorizontalRule:
+		return renderHorizontalRuleElement(rc, el)
+	case domain.ElementSpacer:
+		return renderSpacerElement(rc, el)
+	case domain.ElementStaticText:
+		return renderStaticTextElement(rc, el)
+	default:
+		slog.Warn("skipping unknown education child element type",
+			"element_type", el.ElementType,
+			"element_id", el.ID,
+			"template", rc.tmpl.Name,
+		)
+		return nil
+	}
+}
+
+func renderEduCredentialElement(rc *renderContext, el domain.TemplateElement, ac domain.AcademicCredential) error {
+	var cfg EduCredentialConfig
+	if err := json.Unmarshal([]byte(el.Config), &cfg); err != nil {
+		return fmt.Errorf("parse edu_credential config: %w", err)
+	}
+
+	line := ac.CredentialType
+	if ac.FieldOfStudy != "" {
+		if line != "" {
+			line += ", " + ac.FieldOfStudy
+		} else {
+			line = ac.FieldOfStudy
+		}
+	}
+
+	lineHeight := cfg.FontSize + lineSpacing
+	if err := checkPageBreak(rc.pdf, &rc.y, lineHeight, rc.marginBottom, rc.marginTop); err != nil {
+		return err
+	}
+
+	if err := setFont(rc.pdf, fontNameFromStyle(cfg.FontStyle), cfg.FontSize); err != nil {
+		return err
+	}
+
+	rc.pdf.SetX(rc.marginLeft)
+	rc.pdf.SetY(rc.y)
+	if err := rc.pdf.Cell(nil, line); err != nil {
+		return err
+	}
+
+	if dateCfg := findEduDateConfig(rc, el); dateCfg != nil {
+		dateStr := formatSingleDate(ac.CompletionDate, ac.DateGranularity)
+		if dateStr != "" {
+			if err := setFont(rc.pdf, "LiberationSans-Regular", dateCfg.FontSize); err != nil {
+				return err
+			}
+			w, err := rc.pdf.MeasureTextWidth(dateStr)
+			if err != nil {
+				return err
+			}
+			rc.pdf.SetX(workDatesX(rc, dateCfg.Alignment, w))
+			rc.pdf.SetY(rc.y)
+			if err := rc.pdf.Cell(nil, dateStr); err != nil {
+				return err
+			}
+		}
+	}
+
+	rc.y += lineHeight
+	return nil
+}
+
+func renderEduInstitutionElement(rc *renderContext, el domain.TemplateElement, ac domain.AcademicCredential) error {
+	if ac.Institution == "" {
+		return nil
+	}
+
+	var cfg EduInstitutionConfig
+	if err := json.Unmarshal([]byte(el.Config), &cfg); err != nil {
+		return fmt.Errorf("parse edu_institution config: %w", err)
+	}
+
+	lineHeight := cfg.FontSize + lineSpacing
+	if err := checkPageBreak(rc.pdf, &rc.y, lineHeight, rc.marginBottom, rc.marginTop); err != nil {
+		return err
+	}
+
+	if err := setFont(rc.pdf, fontNameFromStyle(cfg.FontStyle), cfg.FontSize); err != nil {
+		return err
+	}
+
+	rc.pdf.SetX(rc.marginLeft)
+	rc.pdf.SetY(rc.y)
+	if err := rc.pdf.Cell(nil, ac.Institution); err != nil {
+		return err
+	}
+
+	rc.y += lineHeight
+	return nil
+}
+
+func findEduDateConfig(rc *renderContext, credEl domain.TemplateElement) *EduDateConfig {
+	if credEl.ParentID == nil {
+		return nil
+	}
+
+	siblings := rc.childMap[*credEl.ParentID]
+	for _, sibling := range siblings {
+		if sibling.ElementType != domain.ElementEduDate {
+			continue
+		}
+		var cfg EduDateConfig
+		if err := json.Unmarshal([]byte(sibling.Config), &cfg); err != nil {
+			return nil
+		}
+		return &cfg
 	}
 
 	return nil
 }
 
-// renderCertsLoopElement iterates over certifications.
-// Renders each entry individually via the shared renderCertifications
-// helper, applying configurable entry_gap spacing between entries.
+// renderCertsLoopElement iterates over certifications and dispatches
+// configured child elements per entry.
 func renderCertsLoopElement(rc *renderContext, el domain.TemplateElement) error {
 	if len(rc.req.Certs) == 0 {
 		return nil
@@ -899,15 +1391,126 @@ func renderCertsLoopElement(rc *renderContext, el domain.TemplateElement) error 
 		return fmt.Errorf("parse certifications_loop config: %w", err)
 	}
 
+	children := rc.childMap[el.ID]
+	rc.y += cfg.SpaceBefore
+
 	for i, cert := range rc.req.Certs {
 		if i > 0 {
 			rc.y += cfg.EntryGap
 		}
-		var err error
-		rc.y, err = renderCertifications(rc.pdf, []domain.Certification{cert}, rc.y)
-		if err != nil {
-			return fmt.Errorf("certification entry %q: %w", cert.Name, err)
+		for _, child := range children {
+			if err := dispatchCertsChild(rc, child, cert); err != nil {
+				return fmt.Errorf("certification entry %q, child %d (%s): %w",
+					cert.Name, child.ID, child.ElementType, err)
+			}
 		}
+	}
+	rc.y += cfg.SpaceAfter
+
+	return nil
+}
+
+func dispatchCertsChild(
+	rc *renderContext,
+	el domain.TemplateElement,
+	cert domain.Certification,
+) error {
+	switch el.ElementType {
+	case domain.ElementCertName:
+		return renderCertNameElement(rc, el, cert)
+	case domain.ElementCertDetail:
+		return nil
+	case domain.ElementSectionHeading:
+		return renderSectionHeadingElement(rc, el)
+	case domain.ElementHorizontalRule:
+		return renderHorizontalRuleElement(rc, el)
+	case domain.ElementSpacer:
+		return renderSpacerElement(rc, el)
+	case domain.ElementStaticText:
+		return renderStaticTextElement(rc, el)
+	default:
+		slog.Warn("skipping unknown certification child element type",
+			"element_type", el.ElementType,
+			"element_id", el.ID,
+			"template", rc.tmpl.Name,
+		)
+		return nil
+	}
+}
+
+func renderCertNameElement(rc *renderContext, el domain.TemplateElement, cert domain.Certification) error {
+	if cert.Name == "" {
+		return nil
+	}
+
+	var cfg CertNameConfig
+	if err := json.Unmarshal([]byte(el.Config), &cfg); err != nil {
+		return fmt.Errorf("parse cert_name config: %w", err)
+	}
+
+	lineHeight := cfg.FontSize + lineSpacing
+	if err := checkPageBreak(rc.pdf, &rc.y, lineHeight, rc.marginBottom, rc.marginTop); err != nil {
+		return err
+	}
+
+	if err := setFont(rc.pdf, fontNameFromStyle(cfg.FontStyle), cfg.FontSize); err != nil {
+		return err
+	}
+
+	rc.pdf.SetX(rc.marginLeft)
+	rc.pdf.SetY(rc.y)
+	if err := rc.pdf.Cell(nil, cert.Name); err != nil {
+		return err
+	}
+
+	nameW, err := rc.pdf.MeasureTextWidth(cert.Name)
+	if err != nil {
+		return err
+	}
+
+	if detailCfg := findCertDetailConfig(rc, el); detailCfg != nil {
+		detail := ""
+		if cert.IssuingBody != "" {
+			detail += " — " + cert.IssuingBody
+		}
+		if cert.DateEarned != "" {
+			detail += ", " + formatSingleDate(cert.DateEarned, "month")
+		}
+		if cert.ExpirationDate != "" {
+			detail += " – Exp. " + formatSingleDate(cert.ExpirationDate, "month")
+		}
+
+		if detail != "" {
+			if err := setFont(rc.pdf, fontNameFromStyle(detailCfg.FontStyle), detailCfg.FontSize); err != nil {
+				return err
+			}
+			rc.pdf.SetX(rc.marginLeft + nameW)
+			rc.pdf.SetY(rc.y)
+			if err := rc.pdf.Cell(nil, detail); err != nil {
+				return err
+			}
+		}
+	}
+
+	rc.y += lineHeight
+	return nil
+}
+
+func findCertDetailConfig(rc *renderContext, nameEl domain.TemplateElement) *CertDetailConfig {
+	if nameEl.ParentID == nil {
+		return nil
+	}
+
+	siblings := rc.childMap[*nameEl.ParentID]
+	for _, sibling := range siblings {
+		if sibling.ElementType != domain.ElementCertDetail {
+			continue
+		}
+		var cfg CertDetailConfig
+		if err := json.Unmarshal([]byte(sibling.Config), &cfg); err != nil {
+			return nil
+		}
+		return &cfg
 	}
 
 	return nil
@@ -950,7 +1553,16 @@ func renderBodyTextElement(rc *renderContext, el domain.TemplateElement) error {
 	}
 
 	var err error
-	rc.y, err = renderWrappedText(rc.pdf, bodyText, rc.marginLeft, rc.y, rc.usableWidth, fontSize)
+	rc.y, err = renderWrappedText(
+		rc.pdf,
+		bodyText,
+		rc.marginLeft,
+		rc.y,
+		rc.usableWidth,
+		fontSize,
+		rc.marginBottom,
+		rc.marginTop,
+	)
 	if err != nil {
 		return fmt.Errorf("render body text: %w", err)
 	}
@@ -982,7 +1594,7 @@ func renderDateElement(rc *renderContext, el domain.TemplateElement) error {
 		return err
 	}
 
-	if err := checkPageBreak(rc.pdf, &rc.y, fontSize+lineSpacing); err != nil {
+	if err := checkPageBreak(rc.pdf, &rc.y, fontSize+lineSpacing, rc.marginBottom, rc.marginTop); err != nil {
 		return err
 	}
 
@@ -1039,7 +1651,7 @@ func renderGreetingElement(rc *renderContext, el domain.TemplateElement) error {
 		return err
 	}
 
-	if err := checkPageBreak(rc.pdf, &rc.y, fontSize+lineSpacing); err != nil {
+	if err := checkPageBreak(rc.pdf, &rc.y, fontSize+lineSpacing, rc.marginBottom, rc.marginTop); err != nil {
 		return err
 	}
 
@@ -1080,7 +1692,7 @@ func renderClosingElement(rc *renderContext, el domain.TemplateElement) error {
 		return err
 	}
 
-	if err := checkPageBreak(rc.pdf, &rc.y, fontSize+lineSpacing); err != nil {
+	if err := checkPageBreak(rc.pdf, &rc.y, fontSize+lineSpacing, rc.marginBottom, rc.marginTop); err != nil {
 		return err
 	}
 
@@ -1125,7 +1737,16 @@ func renderRecipientAddressElement(rc *renderContext, el domain.TemplateElement)
 	}
 
 	var err error
-	rc.y, err = renderWrappedText(rc.pdf, address, rc.marginLeft, rc.y, rc.usableWidth, fontSize)
+	rc.y, err = renderWrappedText(
+		rc.pdf,
+		address,
+		rc.marginLeft,
+		rc.y,
+		rc.usableWidth,
+		fontSize,
+		rc.marginBottom,
+		rc.marginTop,
+	)
 	if err != nil {
 		return fmt.Errorf("render recipient address: %w", err)
 	}
@@ -1151,6 +1772,68 @@ func fontNameFromStyle(style string) string {
 	default:
 		return "LiberationSans-Regular"
 	}
+}
+
+func renderConfigBullet(
+	rc *renderContext,
+	text string,
+	fontSize float64,
+	bulletChar string,
+	indent float64,
+	bulletSymWidth float64,
+) error {
+	lineHeight := fontSize + lineSpacing
+
+	if err := checkPageBreak(rc.pdf, &rc.y, lineHeight, rc.marginBottom, rc.marginTop); err != nil {
+		return err
+	}
+
+	rc.pdf.SetX(rc.marginLeft + indent)
+	rc.pdf.SetY(rc.y)
+	if err := rc.pdf.Cell(nil, bulletChar); err != nil {
+		return err
+	}
+
+	textX := rc.marginLeft + indent + bulletSymWidth
+	textWidth := rc.usableWidth - indent - bulletSymWidth
+
+	var err error
+	rc.y, err = renderWrappedText(
+		rc.pdf,
+		text,
+		textX,
+		rc.y,
+		textWidth,
+		fontSize,
+		rc.marginBottom,
+		rc.marginTop,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func decodeEscapedSymbol(symbol string) string {
+	if symbol == "" || !strings.Contains(symbol, "\\") {
+		return symbol
+	}
+
+	quoted := "\"" + strings.ReplaceAll(symbol, "\"", "\\\"") + "\""
+	decoded, err := strconv.Unquote(quoted)
+	if err != nil {
+		return symbol
+	}
+
+	return decoded
+}
+
+func boolOrDefault(value *bool, fallback bool) bool {
+	if value == nil {
+		return fallback
+	}
+	return *value
 }
 
 // buildContactLine is re-exported from header.go. It assembles

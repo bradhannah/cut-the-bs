@@ -21,26 +21,28 @@ type mockLensStore struct {
 	skillTags []domain.SkillWithTags
 
 	// call tracking
-	createCalls              []domain.LensInput
-	updateCalls              []updateLensCall
-	deleteCalls              []int64
-	getCalls                 []int64
-	setWHCalls               []setLensWHCall
-	setSummaryCalls          []setLensSummaryCall
-	setBulletCalls           []setLensBulletCall
-	setSkillCalls            []setLensSkillCall
-	setAcademicCalls         []setLensAcademicCall
-	setCertCalls             []setLensCertCall
-	setDescriptorCall        []setLensDescriptorCall
-	getTagCalls              []int64
-	setTagCalls              []setSkillTagCall
-	checkLensNames           []string
-	checkSummaryRefsCalls    []int64
-	checkWHRefsCalls         []int64
-	checkBulletRefsCalls     []int64
-	checkAcademicRefsCalls   []int64
-	checkCertRefsCalls       []int64
-	checkDescriptorRefsCalls []int64
+	createCalls                 []domain.LensInput
+	updateCalls                 []updateLensCall
+	deleteCalls                 []int64
+	getCalls                    []int64
+	setWHCalls                  []setLensWHCall
+	setSummaryCalls             []setLensSummaryCall
+	setBulletCalls              []setLensBulletCall
+	setSkillCalls               []setLensSkillCall
+	setAcademicCalls            []setLensAcademicCall
+	setCertCalls                []setLensCertCall
+	setDescriptorCall           []setLensDescriptorCall
+	getTagCalls                 []int64
+	setTagCalls                 []setSkillTagCall
+	checkLensNames              []string
+	checkSummaryRefsCalls       []int64
+	checkWHRefsCalls            []int64
+	checkBulletRefsCalls        []int64
+	checkAcademicRefsCalls      []int64
+	checkCertRefsCalls          []int64
+	checkDescriptorRefsCalls    []int64
+	checkCoreExpertiseRefsCalls []int64
+	setCoreExpertiseCalls       []setLensCoreExpertiseCall
 }
 
 type setLensSummaryCall struct {
@@ -81,6 +83,11 @@ type setLensCertCall struct {
 type setLensDescriptorCall struct {
 	LensID     int64
 	Selections []domain.LensDescriptorItem
+}
+
+type setLensCoreExpertiseCall struct {
+	LensID     int64
+	Selections []domain.LensCoreExpertiseItem
 }
 
 type setSkillTagCall struct {
@@ -151,6 +158,11 @@ func (m *mockLensStore) SetLensDescriptors(_ context.Context, lensID int64, sele
 	return m.err
 }
 
+func (m *mockLensStore) SetLensCoreExpertise(_ context.Context, lensID int64, selections []domain.LensCoreExpertiseItem) error {
+	m.setCoreExpertiseCalls = append(m.setCoreExpertiseCalls, setLensCoreExpertiseCall{LensID: lensID, Selections: selections})
+	return m.err
+}
+
 func (m *mockLensStore) GetSkillLensTags(_ context.Context, skillID int64) ([]int64, error) {
 	m.getTagCalls = append(m.getTagCalls, skillID)
 	if m.err != nil {
@@ -213,6 +225,14 @@ func (m *mockLensStore) CheckDescriptorLensReferences(_ context.Context, id int6
 
 func (m *mockLensStore) CheckSummaryLensReferences(_ context.Context, id int64) ([]string, error) {
 	m.checkSummaryRefsCalls = append(m.checkSummaryRefsCalls, id)
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.checkLensNames, nil
+}
+
+func (m *mockLensStore) CheckCoreExpertiseLensReferences(_ context.Context, id int64) ([]string, error) {
+	m.checkCoreExpertiseRefsCalls = append(m.checkCoreExpertiseRefsCalls, id)
 	if m.err != nil {
 		return nil, m.err
 	}

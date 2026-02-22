@@ -245,7 +245,6 @@
   .panel {
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
     border-right: 1px solid #2a3a4a;
   }
 
@@ -258,6 +257,7 @@
     width: 240px;
     min-width: 240px;
     background-color: #1a2332;
+    overflow-y: auto;
   }
 
   /* Canvas — flexible center */
@@ -265,6 +265,7 @@
     flex: 1;
     min-width: 0;
     background-color: #1e2d3d;
+    overflow: hidden;
   }
 
   /* Properties — fixed 300px right */
@@ -274,6 +275,7 @@
     background-color: #1a2332;
     border-left: 1px solid #2a3a4a;
     border-right: none;
+    overflow-y: auto;
   }
 
   /* --- Button resets (used by error state) --- */

@@ -1,10 +1,16 @@
 <script lang="ts">
   // Palette.svelte — T029
-  // Draggable element types organized by category. Uses svelte-dnd-action
-  // with copy behavior so palette items are never consumed.
-  import { dndzone, SHADOW_ITEM_MARKER_PROPERTY_NAME } from "svelte-dnd-action";
+  // Draggable element types organized by category.
   import { currentTemplate, canvasElements } from "../../stores/templateBuilder";
-  import { elementLabels, elementIcons, repeatableElementTypes } from "./elementTypes";
+  import {
+    elementLabels,
+    elementIcons,
+    repeatableElementTypes,
+    loopElementTypes,
+    loopSpecificChildren,
+    loopCategoryNames,
+  } from "./elementTypes";
+  import { nativeDraggedElementType } from "./nativeDragState";
 
   // Element type metadata for display in the palette.
   interface PaletteItem {
@@ -12,7 +18,6 @@
     element_type: string;
     label: string;
     icon: string;
-    isDndShadowItem?: boolean;
   }
 
   interface PaletteCategory {
@@ -29,7 +34,7 @@
     };
   }
 
-  // Original (immutable) category definitions — used to restore items after drag.
+  // Category definitions for the palette.
   const resumeCategoryDefs: PaletteCategory[] = [
     {
       name: "Data",
@@ -83,21 +88,47 @@
     },
   ];
 
-  // Deep-clone category defs so svelte-dnd-action can mutate items arrays.
-  function cloneCategories(defs: PaletteCategory[]): PaletteCategory[] {
-    return defs.map((cat) => ({ ...cat, items: cat.items.map((it) => ({ ...it })) }));
-  }
-
-  // Mutable categories array that svelte-dnd-action will update via events.
   let categories: PaletteCategory[] = [];
 
-  // Re-derive from template type changes.
+  // NOTE: $canvasElements must be referenced DIRECTLY here (not inside a called
+  // function) so Svelte 3's static dependency tracker sees it and re-runs this
+  // block whenever the store changes (e.g. after a loop container is added or
+  // deleted, making its child-element category appear or disappear).
   $: {
-    const defs =
+    const baseCategories =
       $currentTemplate?.template_type === "cover_letter"
         ? coverLetterCategoryDefs
         : resumeCategoryDefs;
-    categories = cloneCategories(defs);
+
+    if ($currentTemplate?.template_type !== "resume") {
+      categories = baseCategories;
+    } else {
+      const activeLoopTypes = new Set(
+        $canvasElements
+          .map((el) => el.element_type)
+          .filter((elementType) => loopElementTypes.has(elementType))
+      );
+
+      const loopOrder = ["work_history_loop", "education_loop", "certifications_loop"];
+      const dynamicLoopCategories: PaletteCategory[] = [];
+
+      for (const loopType of loopOrder) {
+        if (!activeLoopTypes.has(loopType)) continue;
+        const children = loopSpecificChildren[loopType] || [];
+        if (children.length === 0) continue;
+        dynamicLoopCategories.push({
+          name: loopCategoryNames[loopType] || elementLabels[loopType] || loopType,
+          items: children.map((elementType) => makeItem(elementType)),
+        });
+      }
+
+      categories = [
+        baseCategories[0],
+        baseCategories[1],
+        ...dynamicLoopCategories,
+        baseCategories[2],
+      ].filter(Boolean) as PaletteCategory[];
+    }
   }
 
   // Compute the set of element types already present on the canvas.
@@ -110,30 +141,18 @@
     return !repeatableElementTypes.has(elementType) && usedElementTypes.has(elementType);
   }
 
-  function handleDndConsider(
-    catIdx: number,
-    e: CustomEvent<{ items: PaletteItem[] }>
-  ): void {
-    // svelte-dnd-action requires the items array to be updated during consider.
-    categories[catIdx].items = e.detail.items;
-    categories = categories; // trigger Svelte reactivity
+  function handleDragStart(e: DragEvent, item: PaletteItem): void {
+    if (!e.dataTransfer) return;
+    nativeDraggedElementType.set(item.element_type);
+    e.dataTransfer.setData("application/x-template-element", item.element_type);
+    e.dataTransfer.setData("text/plain", item.element_type);
+    e.dataTransfer.effectAllowed = "copy";
+    (e.currentTarget as HTMLElement | null)?.classList.add("palette-dragging");
   }
 
-  function handleDndFinalize(
-    catIdx: number,
-    _e: CustomEvent<{ items: PaletteItem[] }>
-  ): void {
-    // Restore original items for this category (copy-from-source pattern).
-    const defs =
-      $currentTemplate?.template_type === "cover_letter"
-        ? coverLetterCategoryDefs
-        : resumeCategoryDefs;
-    categories[catIdx].items = defs[catIdx].items.map((it) => ({ ...it }));
-    categories = categories; // trigger Svelte reactivity
-  }
-
-  function transformDraggedElement(el: HTMLElement): void {
-    el.classList.add("palette-dragging");
+  function handleDragEnd(e: DragEvent): void {
+    nativeDraggedElementType.set(null);
+    (e.currentTarget as HTMLElement | null)?.classList.remove("palette-dragging");
   }
 </script>
 
@@ -142,28 +161,17 @@
     <h3>Elements</h3>
   </div>
 
-  {#each categories as category, catIdx (category.name)}
+  {#each categories as category (category.name)}
     <div class="palette-category">
       <div class="category-label">{category.name}</div>
-      <div
-        class="category-items"
-        use:dndzone={{
-          items: category.items,
-          type: "template-element",
-          dragDisabled: false,
-          dropFromOthersDisabled: true,
-          morphDisabled: true,
-          centreDraggedOnCursor: true,
-          transformDraggedElement,
-        }}
-        on:consider={(e) => handleDndConsider(catIdx, e)}
-        on:finalize={(e) => handleDndFinalize(catIdx, e)}
-      >
+      <div class="category-items">
         {#each category.items as item (item.id)}
           <div
             class="palette-item"
-            class:is-shadow={item[SHADOW_ITEM_MARKER_PROPERTY_NAME]}
             class:used={isUsed(item.element_type)}
+            draggable="true"
+            on:dragstart={(e) => handleDragStart(e, item)}
+            on:dragend={handleDragEnd}
           >
             <span class="item-icon">{item.icon}</span>
             <span class="item-label">{item.label}</span>
@@ -232,10 +240,6 @@
     cursor: grabbing;
   }
 
-  .palette-item.is-shadow {
-    opacity: 0.4;
-  }
-
   .palette-item.used {
     opacity: 0.4;
     cursor: grab;
@@ -265,7 +269,7 @@
     text-overflow: ellipsis;
   }
 
-  /* Dragging style applied via transformDraggedElement */
+  /* Dragging style applied in handleDragStart */
   :global(.palette-dragging) {
     background-color: #2a4060 !important;
     border-radius: 4px;

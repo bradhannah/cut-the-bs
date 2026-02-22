@@ -25,41 +25,21 @@ const (
 
 // Font sizes.
 const (
-	fontSizeName    = 18.0
 	fontSizeSection = 12.0
 	fontSizeBody    = 10.0
-	fontSizeSmall   = 9.0
-	fontSizeDescBar = 10.0
 )
 
 // Spacing.
 const (
-	lineSpacing    = 3.0  // extra space between lines
-	sectionGap     = 10.0 // space before a section heading
-	bulletIndent   = 12.0 // left indent for bullet text
-	bulletSymWidth = 10.0 // width of the bullet character
+	lineSpacing = 3.0 // extra space between lines
 )
 
-// templateFunc is a function that renders a complete resume onto
-// a prepared GoPdf instance. It returns the final Y position.
-type templateFunc func(
-	pdf *gopdf.GoPdf,
-	req domain.RenderResumeRequest,
-) error
-
 // Renderer implements domain.PDFRenderer using signintech/gopdf.
-type Renderer struct {
-	templates map[string]templateFunc
-}
+type Renderer struct{}
 
-// NewRenderer creates a new PDF renderer with built-in templates.
+// NewRenderer creates a new PDF renderer.
 func NewRenderer() *Renderer {
-	r := &Renderer{
-		templates: make(map[string]templateFunc),
-	}
-	r.templates["professional"] = renderProfessional
-	r.templates["modern"] = renderModern
-	return r
+	return &Renderer{}
 }
 
 // ListTemplates returns the available built-in templates.
@@ -127,36 +107,6 @@ func (r *Renderer) RenderResume(
 	return outPath, nil
 }
 
-// renderResumeToBytes is an internal helper that renders a resume
-// template to a byte slice without writing to disk. Used by the
-// hardcoded template path for backward compatibility in tests.
-func (r *Renderer) renderResumeToBytes(
-	tmplName string,
-	req domain.RenderResumeRequest,
-) ([]byte, error) {
-	tmplFn, ok := r.templates[tmplName]
-	if !ok {
-		return nil, fmt.Errorf("unknown template: %q", tmplName)
-	}
-
-	pdf := &gopdf.GoPdf{}
-	pdf.Start(gopdf.Config{
-		PageSize: *gopdf.PageSizeLetter,
-	})
-
-	if err := registerFonts(pdf); err != nil {
-		return nil, fmt.Errorf("register fonts: %w", err)
-	}
-
-	pdf.AddPage()
-
-	if err := tmplFn(pdf, req); err != nil {
-		return nil, fmt.Errorf("render template %q: %w", tmplName, err)
-	}
-
-	return pdf.GetBytesPdfReturnErr()
-}
-
 // RenderCoverLetter generates a PDF cover letter. When req.Template
 // is provided, the template-driven element pipeline is used. When
 // Template is nil, falls back to the hardcoded rendering path for
@@ -201,7 +151,7 @@ func (r *Renderer) RenderCoverLetter(
 		}
 
 		y += 6
-		y, err = renderWrappedText(pdf, req.Letter.BodyText, marginLeft, y, usableWidth, fontSizeBody)
+		y, err = renderWrappedText(pdf, req.Letter.BodyText, marginLeft, y, usableWidth, fontSizeBody, marginBottom, marginTop)
 		if err != nil {
 			return "", fmt.Errorf("render body: %w", err)
 		}
@@ -251,6 +201,7 @@ func renderWrappedText(
 	pdf *gopdf.GoPdf,
 	text string,
 	x, y, maxWidth, fontSize float64,
+	mBottom, mTop float64,
 ) (float64, error) {
 	lineHeight := fontSize + lineSpacing
 
@@ -281,7 +232,7 @@ func renderWrappedText(
 
 			if width > maxWidth && currentLine != "" {
 				// Emit current line.
-				if err := checkPageBreak(pdf, &y, lineHeight); err != nil {
+				if err := checkPageBreak(pdf, &y, lineHeight, mBottom, mTop); err != nil {
 					return y, err
 				}
 				pdf.SetX(x)
@@ -298,7 +249,7 @@ func renderWrappedText(
 
 		// Emit remaining text.
 		if currentLine != "" {
-			if err := checkPageBreak(pdf, &y, lineHeight); err != nil {
+			if err := checkPageBreak(pdf, &y, lineHeight, mBottom, mTop); err != nil {
 				return y, err
 			}
 			pdf.SetX(x)
@@ -322,6 +273,7 @@ func renderWrappedTextHanging(
 	pdf *gopdf.GoPdf,
 	text string,
 	x, firstLineIndent, y, maxWidth, fontSize float64,
+	mBottom, mTop float64,
 ) (float64, error) {
 	lineHeight := fontSize + lineSpacing
 
@@ -350,7 +302,7 @@ func renderWrappedTextHanging(
 
 		if width > curWidth && currentLine != "" {
 			// Emit the current line.
-			if err := checkPageBreak(pdf, &y, lineHeight); err != nil {
+			if err := checkPageBreak(pdf, &y, lineHeight, mBottom, mTop); err != nil {
 				return y, err
 			}
 			pdf.SetX(curX)
@@ -374,7 +326,7 @@ func renderWrappedTextHanging(
 
 	// Emit any remaining text.
 	if currentLine != "" {
-		if err := checkPageBreak(pdf, &y, lineHeight); err != nil {
+		if err := checkPageBreak(pdf, &y, lineHeight, mBottom, mTop); err != nil {
 			return y, err
 		}
 		pdf.SetX(curX)
@@ -390,47 +342,12 @@ func renderWrappedTextHanging(
 
 // checkPageBreak adds a new page if the current Y position would
 // exceed the printable area.
-func checkPageBreak(pdf *gopdf.GoPdf, y *float64, needed float64) error {
-	if *y+needed > letterHeight-marginBottom {
+func checkPageBreak(pdf *gopdf.GoPdf, y *float64, needed, mBottom, mTop float64) error {
+	if *y+needed > letterHeight-mBottom {
 		pdf.AddPage()
-		*y = marginTop
+		*y = mTop
 	}
 	return nil
-}
-
-// renderSectionHeading renders a bold section heading with an
-// underline rule. Returns the Y position after the heading.
-func renderSectionHeading(
-	pdf *gopdf.GoPdf,
-	title string,
-	y float64,
-	underline bool,
-) (float64, error) {
-	if err := checkPageBreak(pdf, &y, fontSizeSection+sectionGap+4); err != nil {
-		return y, err
-	}
-
-	y += sectionGap
-
-	if err := setFont(pdf, "LiberationSans-Bold", fontSizeSection); err != nil {
-		return y, err
-	}
-
-	pdf.SetX(marginLeft)
-	pdf.SetY(y)
-	if err := pdf.Cell(nil, strings.ToUpper(title)); err != nil {
-		return y, fmt.Errorf("render section heading: %w", err)
-	}
-
-	y += fontSizeSection + 2
-
-	if underline {
-		pdf.SetLineWidth(0.5)
-		pdf.Line(marginLeft, y, marginLeft+usableWidth, y)
-		y += 4
-	}
-
-	return y, nil
 }
 
 // formatDateRange formats start/end dates for display on a resume.

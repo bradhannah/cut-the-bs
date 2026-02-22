@@ -854,6 +854,104 @@ func TestTemplateService_CreateTemplateElement_DeepNestingRejected(t *testing.T)
 }
 
 // =========================================================
+// DnD palette-drop contract tests
+//
+// The frontend drag-and-drop flow requires that when a palette item is
+// dropped onto the canvas the backend CreateTemplateElement returns an
+// element whose ParentID is nil (serialises to JSON null) for top-level
+// drops, and a non-nil *int64 for loop-child drops.
+//
+// These tests confirm the backend contract so that the frontend can safely
+// distinguish "top-level" vs "nested" elements by checking parent_id === null.
+// The actual DnD timing bug was in Canvas.svelte / LoopContainer.svelte (fixed
+// separately) — the backend itself was always correct.
+// =========================================================
+
+func TestTemplateService_CreateTemplateElement_TopLevel_ParentIDIsNil(t *testing.T) {
+	// When a user drops a palette element onto the canvas at the top level,
+	// CreateTemplateElement is called with ParentID == nil.
+	// The backend must return an element whose ParentID is also nil so that
+	// the frontend reactive block (which filters on parent_id === null) picks
+	// it up correctly.
+	store := defaultTemplateStore()
+	// Configure the mock to return an element with nil ParentID (top-level).
+	store.element = domain.TemplateElement{
+		ID:          42,
+		TemplateID:  1,
+		ElementType: domain.ElementSpacer,
+		ParentID:    nil, // must be nil / JSON null for top-level
+		Config:      `{"height":10}`,
+		SortOrder:   0,
+	}
+	svc := NewTemplateService(store)
+
+	input := domain.TemplateElementInput{
+		ElementType: domain.ElementSpacer,
+		ParentID:    nil, // palette drop at canvas top level
+		Config:      `{"height":10}`,
+	}
+
+	result, err := svc.CreateTemplateElement(context.Background(), 1, input)
+	require.NoError(t, err)
+	assert.Nil(t, result.ParentID,
+		"top-level element ParentID must be nil so the frontend filter (parent_id === null) includes it in the canvas dndItems")
+	assert.Equal(t, int64(42), result.ID)
+}
+
+func TestTemplateService_CreateTemplateElement_LoopChild_ParentIDIsSet(t *testing.T) {
+	// When a user drops a palette element into a loop container, CreateTemplateElement
+	// is called with a non-nil ParentID.  The returned element must carry the same
+	// non-nil ParentID so LoopContainer.svelte can filter children correctly.
+	store := defaultTemplateStore()
+	parentID := int64(11)
+	store.element = domain.TemplateElement{
+		ID:          43,
+		TemplateID:  1,
+		ElementType: domain.ElementWorkTitle,
+		ParentID:    &parentID, // must be non-nil so the child appears inside the loop
+		Config:      `{}`,
+		SortOrder:   0,
+	}
+	svc := NewTemplateService(store)
+
+	input := domain.TemplateElementInput{
+		ElementType: domain.ElementWorkTitle,
+		ParentID:    &parentID,
+		Config:      `{}`,
+	}
+
+	result, err := svc.CreateTemplateElement(context.Background(), 1, input)
+	require.NoError(t, err)
+	require.NotNil(t, result.ParentID,
+		"loop-child element ParentID must be non-nil so the frontend loop filter (parent_id === parentElement.id) includes it")
+	assert.Equal(t, int64(11), *result.ParentID)
+	assert.Equal(t, int64(43), result.ID)
+}
+
+func TestTemplateService_CreateTemplateElement_InputPassedThrough(t *testing.T) {
+	// Confirms that the service passes the caller's input to the store unchanged
+	// (no accidental mutation of ParentID or ElementType between validation and store call).
+	store := defaultTemplateStore()
+	svc := NewTemplateService(store)
+
+	input := domain.TemplateElementInput{
+		ElementType: domain.ElementSpacer,
+		ParentID:    nil,
+		Config:      `{"height":8}`,
+	}
+
+	_, err := svc.CreateTemplateElement(context.Background(), 1, input)
+	require.NoError(t, err)
+	require.Len(t, store.createElementCalls, 1)
+	call := store.createElementCalls[0]
+	assert.Equal(t, int64(1), call.TemplateID)
+	assert.Equal(t, domain.ElementSpacer, call.Input.ElementType)
+	assert.Nil(t, call.Input.ParentID,
+		"ParentID must not be mutated between service layer and store — frontend depends on nil for top-level elements")
+	assert.Equal(t, `{"height":8}`, call.Input.Config)
+}
+
+// =========================================================
 // T047 — Variable Parsing Tests
 // =========================================================
 

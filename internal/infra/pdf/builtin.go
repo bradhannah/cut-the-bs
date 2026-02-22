@@ -32,10 +32,13 @@ type RoleDescriptorsConfig struct {
 
 // ProfSummaryConfig controls professional summary rendering.
 type ProfSummaryConfig struct {
-	FontSize    float64 `json:"font_size"`
-	BulletChar  string  `json:"bullet_char"`
-	SpaceBefore float64 `json:"space_before"`
-	SpaceAfter  float64 `json:"space_after"`
+	FontSize            float64 `json:"font_size"`
+	BulletChar          string  `json:"bullet_char"`
+	ShowMaster          *bool   `json:"show_master,omitempty"`
+	ShowBulletSummaries *bool   `json:"show_bullet_summaries,omitempty"`
+	EnableBullets       *bool   `json:"enable_bullets,omitempty"`
+	SpaceBefore         float64 `json:"space_before"`
+	SpaceAfter          float64 `json:"space_after"`
 }
 
 // SectionHeadingConfig controls section heading rendering.
@@ -49,9 +52,9 @@ type SectionHeadingConfig struct {
 	SpaceBefore     float64 `json:"space_before"`
 	SpaceAfter      float64 `json:"space_after"`
 	// DataBinding ties this heading to a data source. When the bound
-	// data is empty, the heading is skipped entirely — matching the
-	// hardcoded templates which only render section headings when the
-	// corresponding data exists. Valid values: "summaries",
+	// data is empty, the heading is skipped entirely — matching
+	// historical built-in behavior where section headings only render
+	// when corresponding data exists. Valid values: "summaries",
 	// "work_history", "skills", "core_expertise", "academics",
 	// "certifications", or "" (always render).
 	DataBinding string `json:"data_binding,omitempty"`
@@ -90,6 +93,7 @@ type WorkHistoryLoopConfig struct {
 type WorkTitleConfig struct {
 	FontSize          float64 `json:"font_size"`
 	FontStyle         string  `json:"font_style"` // "bold"
+	TitleRowLayout    string  `json:"title_row_layout"`
 	IncludeEmployer   bool    `json:"include_employer"`
 	EmployerSeparator string  `json:"employer_separator"`
 	EmployerFontStyle string  `json:"employer_font_style"` // "italic" | "bold"
@@ -185,8 +189,10 @@ type CertDetailConfig struct {
 }
 
 // WorkSummaryConfig controls work summary rendering.
-// Currently an empty config — the summary uses the parent loop's font settings.
-type WorkSummaryConfig struct{}
+type WorkSummaryConfig struct {
+	FontSize  float64 `json:"font_size"`
+	FontStyle string  `json:"font_style"` // "italic" | "regular"
+}
 
 // =========================================================
 // Cover letter element config structs
@@ -244,8 +250,8 @@ func mustMarshal(v any) string {
 // =========================================================
 
 // ProfessionalTemplate returns the built-in Professional resume
-// template as a TemplateDetail. The element configs match the exact
-// formatting values from the hardcoded renderProfessional function.
+// template as a TemplateDetail. The element configs preserve the
+// proven Professional visual defaults.
 func ProfessionalTemplate() domain.TemplateDetail {
 	return domain.TemplateDetail{
 		DocumentTemplate: domain.DocumentTemplate{
@@ -285,7 +291,9 @@ func ProfessionalTemplate() domain.TemplateDetail {
 			{ID: 4, TemplateID: 1, ParentID: nil, ElementType: domain.ElementProfSummary, SortOrder: 3,
 				Config: mustMarshal(ProfSummaryConfig{
 					FontSize: 10.0, BulletChar: "\u2022",
-					SpaceBefore: 0.0, SpaceAfter: 0.0,
+					ShowMaster: boolPtr(true), ShowBulletSummaries: boolPtr(true),
+					EnableBullets: boolPtr(true),
+					SpaceBefore:   0.0, SpaceAfter: 0.0,
 				})},
 			{ID: 7, TemplateID: 1, ParentID: nil, ElementType: domain.ElementSectionHeading, SortOrder: 4,
 				Config: mustMarshal(SectionHeadingConfig{
@@ -336,7 +344,7 @@ func ProfessionalTemplate() domain.TemplateDetail {
 				})},
 			{ID: 12, TemplateID: 1, ParentID: nil, ElementType: domain.ElementEducationLoop, SortOrder: 11,
 				Config: mustMarshal(EducationLoopConfig{
-					EntryGap: 0.0, SpaceBefore: 0.0, SpaceAfter: 0.0,
+					EntryGap: 2.0, SpaceBefore: 0.0, SpaceAfter: 0.0,
 				})},
 			{ID: 13, TemplateID: 1, ParentID: nil, ElementType: domain.ElementSectionHeading, SortOrder: 12,
 				Config: mustMarshal(SectionHeadingConfig{
@@ -348,7 +356,7 @@ func ProfessionalTemplate() domain.TemplateDetail {
 				})},
 			{ID: 14, TemplateID: 1, ParentID: nil, ElementType: domain.ElementCertsLoop, SortOrder: 13,
 				Config: mustMarshal(CertsLoopConfig{
-					EntryGap: 0.0, SpaceBefore: 0.0, SpaceAfter: 0.0,
+					EntryGap: 1.0, SpaceBefore: 0.0, SpaceAfter: 0.0,
 				})},
 
 			// work_history_loop children (parent_id = 8)
@@ -363,7 +371,7 @@ func ProfessionalTemplate() domain.TemplateDetail {
 					FontSize: 9.0, Alignment: "right",
 				})},
 			{ID: 17, TemplateID: 1, ParentID: int64Ptr(8), ElementType: domain.ElementWorkSummary, SortOrder: 2,
-				Config: mustMarshal(WorkSummaryConfig{})},
+				Config: mustMarshal(WorkSummaryConfig{FontSize: 10.0, FontStyle: "italic"})},
 			{ID: 18, TemplateID: 1, ParentID: int64Ptr(8), ElementType: domain.ElementWorkBullets, SortOrder: 3,
 				Config: mustMarshal(WorkBulletsConfig{
 					FontSize: 10.0, FontStyle: "regular",
@@ -399,7 +407,7 @@ func ProfessionalTemplate() domain.TemplateDetail {
 				})},
 			{ID: 24, TemplateID: 1, ParentID: int64Ptr(14), ElementType: domain.ElementCertDetail, SortOrder: 1,
 				Config: mustMarshal(CertDetailConfig{
-					FontSize: 10.0, FontStyle: "regular",
+					FontSize: 9.0, FontStyle: "regular",
 				})},
 		},
 	}
@@ -410,8 +418,8 @@ func ProfessionalTemplate() domain.TemplateDetail {
 // =========================================================
 
 // ModernTemplate returns the built-in Modern resume template as a
-// TemplateDetail. The element configs match the exact formatting
-// values from the hardcoded renderModern function.
+// TemplateDetail. The element configs preserve the proven Modern
+// visual defaults.
 func ModernTemplate() domain.TemplateDetail {
 	return domain.TemplateDetail{
 		DocumentTemplate: domain.DocumentTemplate{
@@ -455,7 +463,9 @@ func ModernTemplate() domain.TemplateDetail {
 			{ID: 29, TemplateID: 2, ParentID: nil, ElementType: domain.ElementProfSummary, SortOrder: 4,
 				Config: mustMarshal(ProfSummaryConfig{
 					FontSize: 10.0, BulletChar: "\u2022",
-					SpaceBefore: 0.0, SpaceAfter: 0.0,
+					ShowMaster: boolPtr(true), ShowBulletSummaries: boolPtr(true),
+					EnableBullets: boolPtr(true),
+					SpaceBefore:   0.0, SpaceAfter: 0.0,
 				})},
 			{ID: 30, TemplateID: 2, ParentID: nil, ElementType: domain.ElementSectionHeading, SortOrder: 5,
 				Config: mustMarshal(SectionHeadingConfig{
@@ -506,7 +516,7 @@ func ModernTemplate() domain.TemplateDetail {
 				})},
 			{ID: 37, TemplateID: 2, ParentID: nil, ElementType: domain.ElementEducationLoop, SortOrder: 12,
 				Config: mustMarshal(EducationLoopConfig{
-					EntryGap: 0.0, SpaceBefore: 0.0, SpaceAfter: 0.0,
+					EntryGap: 2.0, SpaceBefore: 0.0, SpaceAfter: 0.0,
 				})},
 			{ID: 38, TemplateID: 2, ParentID: nil, ElementType: domain.ElementSectionHeading, SortOrder: 13,
 				Config: mustMarshal(SectionHeadingConfig{
@@ -518,7 +528,7 @@ func ModernTemplate() domain.TemplateDetail {
 				})},
 			{ID: 39, TemplateID: 2, ParentID: nil, ElementType: domain.ElementCertsLoop, SortOrder: 14,
 				Config: mustMarshal(CertsLoopConfig{
-					EntryGap: 0.0, SpaceBefore: 0.0, SpaceAfter: 0.0,
+					EntryGap: 1.0, SpaceBefore: 0.0, SpaceAfter: 0.0,
 				})},
 
 			// work_history_loop children (parent_id = 31)
@@ -533,7 +543,7 @@ func ModernTemplate() domain.TemplateDetail {
 					FontSize: 9.0, Alignment: "right",
 				})},
 			{ID: 42, TemplateID: 2, ParentID: int64Ptr(31), ElementType: domain.ElementWorkSummary, SortOrder: 2,
-				Config: mustMarshal(WorkSummaryConfig{})},
+				Config: mustMarshal(WorkSummaryConfig{FontSize: 10.0, FontStyle: "italic"})},
 			{ID: 43, TemplateID: 2, ParentID: int64Ptr(31), ElementType: domain.ElementWorkBullets, SortOrder: 3,
 				Config: mustMarshal(WorkBulletsConfig{
 					FontSize: 10.0, FontStyle: "regular",
@@ -569,7 +579,7 @@ func ModernTemplate() domain.TemplateDetail {
 				})},
 			{ID: 49, TemplateID: 2, ParentID: int64Ptr(39), ElementType: domain.ElementCertDetail, SortOrder: 1,
 				Config: mustMarshal(CertDetailConfig{
-					FontSize: 10.0, FontStyle: "regular",
+					FontSize: 9.0, FontStyle: "regular",
 				})},
 		},
 	}
@@ -577,6 +587,10 @@ func ModernTemplate() domain.TemplateDetail {
 
 // int64Ptr is a helper to create an *int64 from a literal.
 func int64Ptr(v int64) *int64 {
+	return &v
+}
+
+func boolPtr(v bool) *bool {
 	return &v
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"cut-the-bs/internal/domain"
 )
@@ -173,6 +174,7 @@ func (s *ResumeService) previewResumeTemplate(
 		Profile:            profile,
 		Links:              links,
 		Summaries:          summaries,
+		MasterSummaryID:    inferPreviewMasterSummaryID(summaries),
 		WorkHistory:        workHistory,
 		Skills:             skills,
 		SkillCategoryNames: skillCatNames,
@@ -183,6 +185,41 @@ func (s *ResumeService) previewResumeTemplate(
 	}
 
 	return s.renderer.RenderResume(ctx, renderReq)
+}
+
+func inferPreviewMasterSummaryID(summaries []domain.ProfessionalSummary) *int64 {
+	if len(summaries) == 0 {
+		return nil
+	}
+
+	var emptyMasterCandidate *int64
+	for _, summary := range summaries {
+		label := strings.ToLower(strings.TrimSpace(summary.Label))
+		switch label {
+		case "master", "master summary", "summary master":
+			id := summary.ID
+			if strings.TrimSpace(summary.BodyText) != "" {
+				return &id
+			}
+			if emptyMasterCandidate == nil {
+				emptyMasterCandidate = &id
+			}
+		}
+	}
+
+	for _, summary := range summaries {
+		if strings.TrimSpace(summary.BodyText) == "" {
+			continue
+		}
+		id := summary.ID
+		return &id
+	}
+
+	if emptyMasterCandidate != nil {
+		return emptyMasterCandidate
+	}
+
+	return nil
 }
 
 // previewCoverLetterTemplate renders a cover letter template with

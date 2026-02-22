@@ -25,6 +25,7 @@
     validLoopChildren,
     loopIterationLabels,
   } from "./elementTypes";
+  import { nativeDraggedElementType } from "./nativeDragState";
 
   export let parentElement: TemplateElement;
   export let children: TemplateElement[] = [];
@@ -41,9 +42,51 @@
   }
 
   let dndItems: ChildDndItem[] = [];
+  let dropIndicatorIndex: number | null = null;
+  let reorderInFlight = false;
 
-  $: {
-    dndItems = (children || [])
+  // Rebuild dndItems from the children prop.
+  function rebuildDndItems(): ChildDndItem[] {
+    return [...(children || [])]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((el) => ({ id: el.id, element_type: el.element_type }));
+  }
+
+  function coerceDndID(id: number | string): number | string {
+    if (typeof id === "number") return id;
+    const trimmed = id.trim();
+    if (trimmed !== "" && /^-?\d+$/.test(trimmed)) {
+      const parsed = Number(trimmed);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return id;
+  }
+
+  function normalizeDndItems(items: ChildDndItem[]): ChildDndItem[] {
+    return items.map((item) => ({
+      ...item,
+      id: coerceDndID(item.id),
+    }));
+  }
+
+  function orderedIDsForReorder(items: ChildDndItem[]): number[] | null {
+    const ids: number[] = [];
+    for (const item of items) {
+      if (typeof item.id !== "number") {
+        return null;
+      }
+      ids.push(item.id);
+    }
+    return ids;
+  }
+
+  // NOTE: `children` must be referenced DIRECTLY here so Svelte 3's static
+  // dependency tracker sees it and re-runs this block when the prop changes
+  // (e.g. after a child is deleted and Canvas passes a new children array).
+  $: if (!reorderInFlight) {
+    dndItems = [...(children || [])]
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((el) => ({ id: el.id, element_type: el.element_type }));
   }
@@ -64,10 +107,155 @@
     dispatch("delete", { id: childId });
   }
 
+  function getDraggedElementType(e: DragEvent): string {
+    const dt = e.dataTransfer;
+    if (!dt) return $nativeDraggedElementType || "";
+
+    const transferred = (
+      dt.getData("application/x-template-element") ||
+      dt.getData("text/plain") ||
+      ""
+    ).trim();
+    return transferred || $nativeDraggedElementType || "";
+  }
+
+  function isTemplateElementDrag(e: DragEvent): boolean {
+    if ($nativeDraggedElementType) return true;
+    const dt = e.dataTransfer;
+    if (!dt) return false;
+    const types = Array.from(dt.types || []);
+    return (
+      types.includes("application/x-template-element") ||
+      types.includes("text/plain")
+    );
+  }
+
+  function getInsertIndex(container: HTMLElement, clientY: number): number {
+    const children = Array.from(container.children).filter(
+      (el) => !el.hasAttribute("data-drop-indicator")
+    );
+    if (children.length === 0) return 0;
+    for (let i = 0; i < children.length; i++) {
+      const rect = children[i].getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      if (clientY < mid) return i;
+    }
+    return children.length;
+  }
+
+  function handleNativeDragOver(e: DragEvent): void {
+    if (!isTemplateElementDrag(e)) return;
+
+    const elementType = getDraggedElementType(e);
+
+    e.stopPropagation();
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+
+    invalidDragOver = !validChildren.has(elementType);
+    if (invalidDragOver) {
+      dropIndicatorIndex = null;
+      return;
+    }
+
+    if (dndItems.length === 0) {
+      dropIndicatorIndex = 0;
+      return;
+    }
+
+    const container = e.currentTarget as HTMLElement | null;
+    if (!container) return;
+    dropIndicatorIndex = getInsertIndex(container, e.clientY);
+  }
+
+  function handleNativeDragLeave(e: DragEvent): void {
+    e.stopPropagation();
+    const container = e.currentTarget as HTMLElement | null;
+    const next = e.relatedTarget;
+    if (container && next instanceof Node && container.contains(next)) {
+      return;
+    }
+    invalidDragOver = false;
+    dropIndicatorIndex = null;
+  }
+
+  async function handleNativeDrop(e: DragEvent): Promise<void> {
+    const elementType = getDraggedElementType(e);
+    if (!elementType) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+
+    const templateId = $currentTemplate?.id;
+    if (!templateId) {
+      invalidDragOver = false;
+      dropIndicatorIndex = null;
+      nativeDraggedElementType.set(null);
+      return;
+    }
+
+    if (!validChildren.has(elementType)) {
+      addToast(
+        "error",
+        `${elementLabels[elementType] || elementType} cannot be added to ${elementLabels[parentElement.element_type]}`
+      );
+      invalidDragOver = false;
+      dropIndicatorIndex = null;
+      nativeDraggedElementType.set(null);
+      return;
+    }
+
+    const container = e.currentTarget as HTMLElement | null;
+    const insertIndex =
+      dndItems.length === 0
+        ? 0
+        : dropIndicatorIndex ??
+          (container ? getInsertIndex(container, e.clientY) : dndItems.length);
+    const config = defaultConfigs[elementType] || "{}";
+
+    try {
+      markSaving();
+      const created = await createTemplateElement(templateId, {
+        parent_id: parentElement.id,
+        element_type: elementType,
+        config,
+      });
+
+      canvasElements.update((els) => [...els, created]);
+
+      const orderedIds = rebuildDndItems()
+        .map((item) => item.id as number)
+        .filter((id) => id !== created.id);
+      orderedIds.splice(insertIndex, 0, created.id);
+
+      await reorderTemplateElements(templateId, parentElement.id, orderedIds);
+
+      canvasElements.update((els) =>
+        els.map((el) => {
+          const idx = orderedIds.indexOf(el.id);
+          if (idx !== -1 && el.parent_id === parentElement.id) {
+            return { ...el, sort_order: idx };
+          }
+          return el;
+        })
+      );
+      markSaved();
+    } catch (err: any) {
+      console.error("[LoopContainer] createTemplateElement error:", err);
+      markSaveError();
+      addToast("error", err?.message || "Failed to add child element");
+    } finally {
+      invalidDragOver = false;
+      dropIndicatorIndex = null;
+      nativeDraggedElementType.set(null);
+    }
+  }
+
   async function handleConsider(
-    e: CustomEvent<{ items: ChildDndItem[] }>
+    e: CustomEvent<{ items: ChildDndItem[]; info?: { source?: string; trigger?: string } }>
   ): Promise<void> {
-    const items = e.detail.items;
+    const items = normalizeDndItems(e.detail.items);
+
     // Detect if an invalid element type is being dragged over.
     const newItem = items.find((item) => typeof item.id === "string");
     if (newItem) {
@@ -80,81 +268,52 @@
   }
 
   async function handleFinalize(
-    e: CustomEvent<{ items: ChildDndItem[] }>
+    e: CustomEvent<{ items: ChildDndItem[]; info?: { source?: string; trigger?: string } }>
   ): Promise<void> {
+    const items = normalizeDndItems(e.detail.items);
+    dndItems = items;
+
+    const orderedIds = orderedIDsForReorder(items);
+    if (!orderedIds) {
+      invalidDragOver = false;
+      dndItems = rebuildDndItems();
+      return;
+    }
+
     invalidDragOver = false;
-    const items = e.detail.items;
     const templateId = $currentTemplate?.id;
-    if (!templateId) return;
 
-    const newItem = items.find((item) => typeof item.id === "string");
+    if (!templateId) {
+      dndItems = rebuildDndItems();
+      return;
+    }
 
-    if (newItem) {
-      const elementType = newItem.element_type || (newItem.id as string);
+    // svelte-dnd-action requires that `items` is updated synchronously when
+    // `finalize` fires — before any awaited work — otherwise the library will
+    // revert its visual state and the dropped element disappears from the loop.
+    reorderInFlight = true;
 
-      // Validate the child type is allowed for this loop.
-      if (!validChildren.has(elementType)) {
-        addToast("error", `${elementLabels[elementType] || elementType} cannot be added to ${elementLabels[parentElement.element_type]}`);
-        // Reset dndItems to current children.
-        dndItems = (children || [])
-          .sort((a, b) => a.sort_order - b.sort_order)
-          .map((el) => ({ id: el.id, element_type: el.element_type }));
-        return;
-      }
+    try {
+      markSaving();
+      await reorderTemplateElements(templateId, parentElement.id, orderedIds);
 
-      const config = defaultConfigs[elementType] || "{}";
-
-      try {
-        markSaving();
-        const created = await createTemplateElement(templateId, {
-          parent_id: parentElement.id,
-          element_type: elementType,
-          config: config,
-        });
-
-        canvasElements.update((els) => [...els, created]);
-
-        const orderedIds = items.map((item) =>
-          typeof item.id === "string" ? created.id : (item.id as number)
-        );
-
-        await reorderTemplateElements(templateId, parentElement.id, orderedIds);
-
-        canvasElements.update((els) =>
-          els.map((el) => {
-            const idx = orderedIds.indexOf(el.id);
-            if (idx !== -1 && el.parent_id === parentElement.id) {
-              return { ...el, sort_order: idx };
-            }
-            return el;
-          })
-        );
-        markSaved();
-      } catch (err: any) {
-        markSaveError();
-        addToast("error", err?.message || "Failed to add child element");
-      }
-    } else {
-      const orderedIds = items.map((item) => item.id as number);
-
-      try {
-        markSaving();
-        await reorderTemplateElements(templateId, parentElement.id, orderedIds);
-
-        canvasElements.update((els) =>
-          els.map((el) => {
-            const idx = orderedIds.indexOf(el.id);
-            if (idx !== -1 && el.parent_id === parentElement.id) {
-              return { ...el, sort_order: idx };
-            }
-            return el;
-          })
-        );
-        markSaved();
-      } catch (err: any) {
-        markSaveError();
-        addToast("error", err?.message || "Failed to reorder child elements");
-      }
+      canvasElements.update((els) =>
+        els.map((el) => {
+          const idx = orderedIds.indexOf(el.id);
+          if (idx !== -1 && el.parent_id === parentElement.id) {
+            return { ...el, sort_order: idx };
+          }
+          return el;
+        })
+      );
+      markSaved();
+    } catch (err: any) {
+      console.error("[LoopContainer] reorder error:", err);
+      markSaveError();
+      addToast("error", err?.message || "Failed to reorder child elements");
+      dndItems = rebuildDndItems();
+    } finally {
+      reorderInFlight = false;
     }
   }
 </script>
@@ -174,11 +333,19 @@
         items: dndItems,
         type: "template-element",
         dropTargetStyle: { outline: invalidDragOver ? "2px dashed #ff6b6b" : "2px dashed #7a6af4", outlineOffset: "-2px" },
+        dropFromOthersDisabled: true,
         centreDraggedOnCursor: false,
+        useCursorForDetection: true,
       }}
       on:consider={handleConsider}
       on:finalize={handleFinalize}
+      on:dragover={handleNativeDragOver}
+      on:drop={handleNativeDrop}
+      on:dragleave={handleNativeDragLeave}
     >
+      {#if dropIndicatorIndex === 0}
+        <div class="drop-indicator" data-drop-indicator></div>
+      {/if}
       <p class="loop-empty-hint">Drop child elements here</p>
     </div>
   {:else}
@@ -189,12 +356,20 @@
         items: dndItems,
         type: "template-element",
         dropTargetStyle: { outline: invalidDragOver ? "2px dashed #ff6b6b" : "2px dashed #7a6af4", outlineOffset: "-2px" },
+        dropFromOthersDisabled: true,
         centreDraggedOnCursor: false,
+        useCursorForDetection: true,
       }}
       on:consider={handleConsider}
       on:finalize={handleFinalize}
+      on:dragover={handleNativeDragOver}
+      on:drop={handleNativeDrop}
+      on:dragleave={handleNativeDragLeave}
     >
-      {#each dndItems as child (child.id)}
+      {#each dndItems as child, i (child.id)}
+        {#if dropIndicatorIndex === i}
+          <div class="drop-indicator" data-drop-indicator></div>
+        {/if}
         <!-- svelte-ignore a11y-click-events-have-key-events -->
         <div
           class="child-element"
@@ -215,6 +390,9 @@
           </button>
         </div>
       {/each}
+      {#if dropIndicatorIndex === dndItems.length}
+        <div class="drop-indicator" data-drop-indicator></div>
+      {/if}
     </div>
   {/if}
 </div>
@@ -336,5 +514,13 @@
 
   .delete-btn:hover {
     color: #ff6b6b;
+  }
+
+  .drop-indicator {
+    height: 2px;
+    background: #4a8af4;
+    border-radius: 1px;
+    margin: 1px 0;
+    pointer-events: none;
   }
 </style>

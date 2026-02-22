@@ -531,35 +531,7 @@ func TestRenderer_ListTemplates(t *testing.T) {
 	}
 }
 
-// =================================================================
-// Fidelity Tests (T016, T017)
-// =================================================================
-
-// renderHardcoded renders a resume using the old hardcoded template
-// function and returns the raw PDF bytes. It mirrors the RenderResume
-// method logic but uses GetBytesPdfReturnErr instead of WritePdf.
-func renderHardcoded(t *testing.T, tmplID string, req domain.RenderResumeRequest) []byte {
-	t.Helper()
-
-	r := NewRenderer()
-	tmplFn, ok := r.templates[tmplID]
-	require.True(t, ok, "template %q must exist", tmplID)
-
-	pdf := &gopdf.GoPdf{}
-	pdf.Start(gopdf.Config{
-		PageSize: *gopdf.PageSizeLetter,
-	})
-	require.NoError(t, registerFonts(pdf))
-	pdf.AddPage()
-
-	require.NoError(t, tmplFn(pdf, req))
-
-	data, err := pdf.GetBytesPdfReturnErr()
-	require.NoError(t, err)
-	return data
-}
-
-// renderTemplated renders a resume using the new template-driven
+// renderTemplated renders a resume using the template-driven
 // element pipeline and returns the raw PDF bytes.
 func renderTemplated(t *testing.T, tmpl domain.TemplateDetail, req domain.RenderResumeRequest) []byte {
 	t.Helper()
@@ -577,151 +549,6 @@ func renderTemplated(t *testing.T, tmpl domain.TemplateDetail, req domain.Render
 	data, err := pdf.GetBytesPdfReturnErr()
 	require.NoError(t, err)
 	return data
-}
-
-// fullTestDataWithCoreExpertise extends fullTestData with core
-// expertise items and skill category names, exercising all sections.
-func fullTestDataWithCoreExpertise(outputDir string) domain.RenderResumeRequest {
-	req := fullTestData(outputDir)
-	req.MasterSummaryID = int64Ptr(1)
-	req.CoreExpertise = []domain.CoreExpertise{
-		{ID: 1, Label: "Distributed Systems", SortOrder: 0},
-		{ID: 2, Label: "API Design", SortOrder: 1},
-		{ID: 3, Label: "Cloud Architecture", SortOrder: 2},
-	}
-	req.SkillCategoryNames = map[int64]string{
-		1: "Languages",
-		2: "Databases",
-		3: "Infrastructure",
-	}
-	return req
-}
-
-// TestRenderer_Fidelity_Professional (T016) verifies that the
-// template-driven pipeline produces byte-identical output to the
-// hardcoded renderProfessional function.
-func TestRenderer_Fidelity_Professional(t *testing.T) {
-	req := fullTestDataWithCoreExpertise("")
-	tmpl := ProfessionalTemplate()
-
-	hardcoded := renderHardcoded(t, "professional", req)
-	templated := renderTemplated(t, tmpl, req)
-
-	if !assert.Equal(t, hardcoded, templated,
-		"template-driven Professional output must be byte-identical to hardcoded") {
-		// Write both files for manual inspection on failure.
-		dir := t.TempDir()
-		os.WriteFile(filepath.Join(dir, "hardcoded.pdf"), hardcoded, 0o644)
-		os.WriteFile(filepath.Join(dir, "templated.pdf"), templated, 0o644)
-		t.Logf("PDFs written to %s for inspection", dir)
-		t.Logf("hardcoded size: %d bytes, templated size: %d bytes",
-			len(hardcoded), len(templated))
-	}
-}
-
-// TestRenderer_Fidelity_Modern (T017) verifies that the template-driven
-// pipeline produces byte-identical output to the hardcoded renderModern
-// function.
-func TestRenderer_Fidelity_Modern(t *testing.T) {
-	req := fullTestDataWithCoreExpertise("")
-	tmpl := ModernTemplate()
-
-	hardcoded := renderHardcoded(t, "modern", req)
-	templated := renderTemplated(t, tmpl, req)
-
-	if !assert.Equal(t, hardcoded, templated,
-		"template-driven Modern output must be byte-identical to hardcoded") {
-		dir := t.TempDir()
-		os.WriteFile(filepath.Join(dir, "hardcoded.pdf"), hardcoded, 0o644)
-		os.WriteFile(filepath.Join(dir, "templated.pdf"), templated, 0o644)
-		t.Logf("PDFs written to %s for inspection", dir)
-		t.Logf("hardcoded size: %d bytes, templated size: %d bytes",
-			len(hardcoded), len(templated))
-	}
-}
-
-// TestRenderer_Fidelity_Professional_MinimalData tests that
-// minimal data also produces identical output between pipelines.
-func TestRenderer_Fidelity_Professional_MinimalData(t *testing.T) {
-	req := minimalTestData("")
-	tmpl := ProfessionalTemplate()
-
-	hardcoded := renderHardcoded(t, "professional", req)
-	templated := renderTemplated(t, tmpl, req)
-
-	if !assert.Equal(t, hardcoded, templated,
-		"minimal-data Professional output must be byte-identical") {
-		dir := t.TempDir()
-		os.WriteFile(filepath.Join(dir, "hardcoded.pdf"), hardcoded, 0o644)
-		os.WriteFile(filepath.Join(dir, "templated.pdf"), templated, 0o644)
-		t.Logf("PDFs written to %s for inspection", dir)
-		t.Logf("hardcoded size: %d bytes, templated size: %d bytes",
-			len(hardcoded), len(templated))
-	}
-}
-
-// TestRenderer_Fidelity_Modern_MinimalData tests minimal data
-// through the Modern template pipeline.
-func TestRenderer_Fidelity_Modern_MinimalData(t *testing.T) {
-	req := minimalTestData("")
-	tmpl := ModernTemplate()
-
-	hardcoded := renderHardcoded(t, "modern", req)
-	templated := renderTemplated(t, tmpl, req)
-
-	if !assert.Equal(t, hardcoded, templated,
-		"minimal-data Modern output must be byte-identical") {
-		dir := t.TempDir()
-		os.WriteFile(filepath.Join(dir, "hardcoded.pdf"), hardcoded, 0o644)
-		os.WriteFile(filepath.Join(dir, "templated.pdf"), templated, 0o644)
-		t.Logf("PDFs written to %s for inspection", dir)
-		t.Logf("hardcoded size: %d bytes, templated size: %d bytes",
-			len(hardcoded), len(templated))
-	}
-}
-
-// TestRenderer_Fidelity_Professional_WithSecondaryBullets tests
-// the outcomes block rendering with secondary bullets.
-func TestRenderer_Fidelity_Professional_WithSecondaryBullets(t *testing.T) {
-	req := fullTestDataWithCoreExpertise("")
-	// Add secondary (outcome) bullets to the first work entry.
-	req.WorkHistory[0].Bullets = append(req.WorkHistory[0].Bullets,
-		domain.AchievementBullet{
-			ID:            100,
-			WorkHistoryID: 1,
-			Text:          "Achieved 99.99% uptime SLA across all production services",
-			BulletType:    domain.BulletTypeSecondary,
-			SortOrder:     3,
-		},
-		domain.AchievementBullet{
-			ID:            101,
-			WorkHistoryID: 1,
-			Text:          "Reduced mean time to recovery from 4 hours to 15 minutes",
-			BulletType:    domain.BulletTypeSecondary,
-			SortOrder:     4,
-		},
-	)
-	tmpl := ProfessionalTemplate()
-
-	hardcoded := renderHardcoded(t, "professional", req)
-	templated := renderTemplated(t, tmpl, req)
-
-	assert.Equal(t, hardcoded, templated,
-		"Professional with secondary bullets must be byte-identical")
-}
-
-// TestRenderer_Fidelity_Professional_WithWorkSummary tests
-// the work entry summary rendering.
-func TestRenderer_Fidelity_Professional_WithWorkSummary(t *testing.T) {
-	req := fullTestDataWithCoreExpertise("")
-	req.WorkHistory[0].Summary = "Led the platform engineering team responsible for core infrastructure and developer tooling."
-	tmpl := ProfessionalTemplate()
-
-	hardcoded := renderHardcoded(t, "professional", req)
-	templated := renderTemplated(t, tmpl, req)
-
-	assert.Equal(t, hardcoded, templated,
-		"Professional with work summary must be byte-identical")
 }
 
 // TestRenderer_EmptyLoop_ProducesNoOutput (T036) verifies that when
@@ -884,6 +711,31 @@ func TestRenderer_EducationLoop_EntryGap(t *testing.T) {
 					Config:      mustJSONTest(EducationLoopConfig{EntryGap: entryGap}),
 					SortOrder:   2,
 				},
+				// education_loop children
+				{
+					ID:          4,
+					TemplateID:  999,
+					ParentID:    int64Ptr(3),
+					ElementType: domain.ElementEduCredential,
+					Config:      mustJSONTest(EduCredentialConfig{FontSize: 10.0, FontStyle: "bold"}),
+					SortOrder:   0,
+				},
+				{
+					ID:          5,
+					TemplateID:  999,
+					ParentID:    int64Ptr(3),
+					ElementType: domain.ElementEduInstitution,
+					Config:      mustJSONTest(EduInstitutionConfig{FontSize: 10.0, FontStyle: "regular"}),
+					SortOrder:   1,
+				},
+				{
+					ID:          6,
+					TemplateID:  999,
+					ParentID:    int64Ptr(3),
+					ElementType: domain.ElementEduDate,
+					Config:      mustJSONTest(EduDateConfig{FontSize: 9.0, Alignment: "right"}),
+					SortOrder:   2,
+				},
 			},
 		}
 	}
@@ -947,6 +799,23 @@ func TestRenderer_CertsLoop_EntryGap(t *testing.T) {
 					Config:      mustJSONTest(CertsLoopConfig{EntryGap: entryGap}),
 					SortOrder:   2,
 				},
+				// certifications_loop children
+				{
+					ID:          4,
+					TemplateID:  999,
+					ParentID:    int64Ptr(3),
+					ElementType: domain.ElementCertName,
+					Config:      mustJSONTest(CertNameConfig{FontSize: 10.0, FontStyle: "bold"}),
+					SortOrder:   0,
+				},
+				{
+					ID:          5,
+					TemplateID:  999,
+					ParentID:    int64Ptr(3),
+					ElementType: domain.ElementCertDetail,
+					Config:      mustJSONTest(CertDetailConfig{FontSize: 9.0, FontStyle: "regular"}),
+					SortOrder:   1,
+				},
 			},
 		}
 	}
@@ -970,6 +839,104 @@ func TestRenderer_CertsLoop_EntryGap(t *testing.T) {
 
 	assert.NotEqual(t, pdfNoGap, pdfWithGap,
 		"entry_gap=15 should produce different PDF output than entry_gap=0")
+}
+
+// TestRenderer_WorkSummary_BackcompatEmptyConfig ensures legacy
+// templates with an empty work_summary config still render entry
+// summary text using fallback defaults.
+func TestRenderer_WorkSummary_BackcompatEmptyConfig(t *testing.T) {
+	buildTemplate := func(includeWorkSummary bool, workSummaryConfig string) domain.TemplateDetail {
+		elements := []domain.TemplateElement{
+			{
+				ID:          1,
+				TemplateID:  999,
+				ElementType: domain.ElementProfileHeader,
+				Config:      mustJSONTest(ProfileHeaderConfig{NameFontSize: 18.0, DetailFontSize: 10.0, Alignment: "center", SpaceAfter: 6.0}),
+				SortOrder:   0,
+			},
+			{
+				ID:          2,
+				TemplateID:  999,
+				ElementType: domain.ElementSectionHeading,
+				Config:      mustJSONTest(SectionHeadingConfig{Text: "Experience", FontSize: 12.0, FontStyle: "bold", Uppercase: true, Underline: true, UnderlineWeight: 0.5, SpaceBefore: 10.0, SpaceAfter: 4.0, DataBinding: "work_history"}),
+				SortOrder:   1,
+			},
+			{
+				ID:          3,
+				TemplateID:  999,
+				ElementType: domain.ElementWorkHistoryLoop,
+				Config:      mustJSONTest(WorkHistoryLoopConfig{EntryGap: 4.0}),
+				SortOrder:   2,
+			},
+			{
+				ID:          4,
+				TemplateID:  999,
+				ParentID:    int64Ptr(3),
+				ElementType: domain.ElementWorkTitle,
+				Config:      mustJSONTest(WorkTitleConfig{FontSize: 10.0, FontStyle: "bold", IncludeEmployer: true, EmployerSeparator: " — ", EmployerFontStyle: "italic", SpaceAfter: 13.0}),
+				SortOrder:   0,
+			},
+			{
+				ID:          5,
+				TemplateID:  999,
+				ParentID:    int64Ptr(3),
+				ElementType: domain.ElementWorkDates,
+				Config:      mustJSONTest(WorkDatesConfig{FontSize: 9.0, Alignment: "right"}),
+				SortOrder:   1,
+			},
+		}
+
+		if includeWorkSummary {
+			elements = append(elements, domain.TemplateElement{
+				ID:          6,
+				TemplateID:  999,
+				ParentID:    int64Ptr(3),
+				ElementType: domain.ElementWorkSummary,
+				Config:      workSummaryConfig,
+				SortOrder:   2,
+			})
+		}
+
+		return domain.TemplateDetail{
+			DocumentTemplate: domain.DocumentTemplate{
+				ID:           999,
+				Name:         "Work Summary Backcompat Test",
+				TemplateType: domain.TemplateTypeResume,
+				MarginTop:    54.0,
+				MarginBottom: 54.0,
+				MarginLeft:   72.0,
+				MarginRight:  72.0,
+			},
+			Elements: elements,
+		}
+	}
+
+	req := domain.RenderResumeRequest{
+		Profile: domain.UserProfile{FullName: "Test User", Email: "test@work.com"},
+		WorkHistory: []domain.WorkHistoryEntry{
+			{
+				ID:                   1,
+				EmployerName:         "Acme Corp",
+				JobTitle:             "Engineer",
+				Summary:              "Lead summary line that should render even when work_summary config is empty.",
+				StartDate:            "2021-01",
+				DateGranularityStart: "month",
+			},
+		},
+	}
+
+	tmplWithLegacyConfig := buildTemplate(true, `{}`)
+	tmplWithoutSummary := buildTemplate(false, ``)
+
+	pdfWithLegacyConfig := renderTemplated(t, tmplWithLegacyConfig, req)
+	pdfWithoutSummary := renderTemplated(t, tmplWithoutSummary, req)
+
+	require.NotEmpty(t, pdfWithLegacyConfig)
+	require.NotEmpty(t, pdfWithoutSummary)
+	assert.NotEqual(t, pdfWithoutSummary, pdfWithLegacyConfig,
+		"legacy empty work_summary config should still render summary text")
+	assert.Greater(t, len(pdfWithLegacyConfig), len(pdfWithoutSummary),
+		"PDF should be larger when summary text is rendered")
 }
 
 // =================================================================
@@ -1146,22 +1113,6 @@ func TestRenderer_RenderCoverLetter_WithVariableSubstitution(t *testing.T) {
 
 	path, err := r.RenderCoverLetter(context.Background(), req)
 	require.NoError(t, err, "should render cover letter with variable substitution")
-
-	info, err := os.Stat(path)
-	require.NoError(t, err)
-	assert.Greater(t, info.Size(), int64(0))
-}
-
-func TestRenderer_RenderCoverLetter_FallbackWhenNoTemplate(t *testing.T) {
-	// When Template is nil, should fall back to hardcoded rendering.
-	dir := t.TempDir()
-	r := NewRenderer()
-
-	req := coverLetterTestData(dir)
-	// Template is nil by default from coverLetterTestData.
-
-	path, err := r.RenderCoverLetter(context.Background(), req)
-	require.NoError(t, err, "should fall back to hardcoded cover letter rendering")
 
 	info, err := os.Stat(path)
 	require.NoError(t, err)

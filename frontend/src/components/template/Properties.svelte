@@ -171,6 +171,11 @@
     { value: "center", label: "Center" },
     { value: "right", label: "Right" },
   ];
+
+  const workTitleRowLayoutOptions = [
+    { value: "inline_with_dates", label: "Inline with dates" },
+    { value: "stack_dates_below", label: "Dates on next line" },
+  ];
 </script>
 
 {#if $selectedElement}
@@ -214,8 +219,8 @@
         <label class="prop-toggle">
           <input
             type="checkbox"
-            checked={config.bold ?? true}
-            on:change={(e) => updateConfigField("bold", e.currentTarget.checked)}
+            checked={(config.font_style ?? "bold") === "bold"}
+            on:change={(e) => updateConfigField("font_style", e.currentTarget.checked ? "bold" : "normal")}
           />
           Bold
         </label>
@@ -476,6 +481,17 @@
           Show Links
         </label>
       </div>
+      <div class="prop-row">
+        <label class="prop-toggle">
+          <input
+            type="checkbox"
+            checked={config.show_links_inline ?? false}
+            disabled={!(config.show_links ?? true)}
+            on:change={(e) => updateConfigField("show_links_inline", e.currentTarget.checked)}
+          />
+          Links Inline (wrap)
+        </label>
+      </div>
       <div class="prop-group">
         <label class="prop-label" for="ph-space-after">Space After (pt)</label>
         <input
@@ -555,17 +571,52 @@
       </div>
 
     {:else if elementType === "professional_summary"}
-      <div class="prop-group">
-        <label class="prop-label" for="ps-bullet">Bullet Character</label>
-        <input
-          id="ps-bullet"
-          type="text"
-          class="prop-input prop-input-sm"
-          maxlength="2"
-          value={config.bullet_char || "\u2022"}
-          on:input={(e) => updateConfigField("bullet_char", e.currentTarget.value)}
-        />
+      <div class="prop-row">
+        <label class="prop-toggle">
+          <input
+            type="checkbox"
+            checked={config.show_master ?? true}
+            on:change={(e) => updateConfigField("show_master", e.currentTarget.checked)}
+          />
+          Show Master Summary
+        </label>
       </div>
+      <div class="prop-row">
+        <label class="prop-toggle">
+          <input
+            type="checkbox"
+            checked={config.show_bullet_summaries ?? true}
+            on:change={(e) => updateConfigField("show_bullet_summaries", e.currentTarget.checked)}
+          />
+          Show Bullet Summaries
+        </label>
+      </div>
+      <div class="prop-row">
+        <label class="prop-toggle">
+          <input
+            type="checkbox"
+            checked={config.enable_bullets ?? true}
+            disabled={!(config.show_bullet_summaries ?? true)}
+            on:change={(e) => updateConfigField("enable_bullets", e.currentTarget.checked)}
+          />
+          Render Bullet Markers
+        </label>
+      </div>
+
+      {#if (config.show_bullet_summaries ?? true) && (config.enable_bullets ?? true)}
+        <div class="prop-group">
+          <label class="prop-label" for="ps-bullet">Bullet Character</label>
+          <input
+            id="ps-bullet"
+            type="text"
+            class="prop-input prop-input-sm"
+            maxlength="2"
+            value={config.bullet_char || "\u2022"}
+            on:input={(e) => updateConfigField("bullet_char", e.currentTarget.value)}
+          />
+        </div>
+      {/if}
+
       <div class="prop-group">
         <label class="prop-label" for="ps-font-size">Font Size (pt)</label>
         <input
@@ -577,6 +628,19 @@
           step="0.5"
           value={config.font_size ?? 10}
           on:input={(e) => updateConfigField("font_size", parseFloat(e.currentTarget.value))}
+        />
+      </div>
+      <div class="prop-group">
+        <label class="prop-label" for="ps-space-before">Space Before (pt)</label>
+        <input
+          id="ps-space-before"
+          type="number"
+          class="prop-input prop-input-sm"
+          min="0"
+          max="100"
+          step="1"
+          value={config.space_before ?? 0}
+          on:input={(e) => updateConfigField("space_before", parseFloat(e.currentTarget.value))}
         />
       </div>
       <div class="prop-group">
@@ -649,6 +713,21 @@
           on:input={(e) => updateConfigField("skill_separator", e.currentTarget.value)}
         />
       </div>
+      {#if config.group_by_category}
+        <div class="prop-group">
+          <label class="prop-label" for="sk-cat-font-style">Category Font Style</label>
+          <select
+            id="sk-cat-font-style"
+            class="prop-select"
+            value={config.category_font_style || "bold"}
+            on:change={(e) => updateConfigField("category_font_style", e.currentTarget.value)}
+          >
+            {#each fontStyleOptions as opt}
+              <option value={opt.value}>{opt.label}</option>
+            {/each}
+          </select>
+        </div>
+      {/if}
 
     {:else if elementType === "core_expertise"}
       <div class="prop-group">
@@ -761,6 +840,19 @@
           on:change={(e) => updateConfigField("font_style", e.currentTarget.value)}
         >
           {#each fontStyleOptions as opt}
+            <option value={opt.value}>{opt.label}</option>
+          {/each}
+        </select>
+      </div>
+      <div class="prop-group">
+        <label class="prop-label" for="wt-row-layout">Title Row Layout</label>
+        <select
+          id="wt-row-layout"
+          class="prop-select"
+          value={config.title_row_layout || "inline_with_dates"}
+          on:change={(e) => updateConfigField("title_row_layout", e.currentTarget.value)}
+        >
+          {#each workTitleRowLayoutOptions as opt}
             <option value={opt.value}>{opt.label}</option>
           {/each}
         </select>
