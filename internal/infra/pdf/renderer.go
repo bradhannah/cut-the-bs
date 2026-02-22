@@ -157,7 +157,10 @@ func (r *Renderer) renderResumeToBytes(
 	return pdf.GetBytesPdfReturnErr()
 }
 
-// RenderCoverLetter generates a PDF cover letter.
+// RenderCoverLetter generates a PDF cover letter. When req.Template
+// is provided, the template-driven element pipeline is used. When
+// Template is nil, falls back to the hardcoded rendering path for
+// backward compatibility.
 func (r *Renderer) RenderCoverLetter(
 	_ context.Context,
 	req domain.RenderCoverLetterRequest,
@@ -176,26 +179,34 @@ func (r *Renderer) RenderCoverLetter(
 	}
 
 	pdf.AddPage()
-	pdf.SetY(marginTop)
 
-	// Render header.
-	cfg := DefaultHeaderConfig()
-	y, err := RenderProfileHeader(pdf, req.Profile, req.Links, cfg)
-	if err != nil {
-		return "", fmt.Errorf("render header: %w", err)
-	}
+	if req.Template != nil {
+		// Template-driven path.
+		rc := newCoverLetterRenderContext(pdf, req, *req.Template)
+		if err := renderElements(rc); err != nil {
+			return "", fmt.Errorf("render cover letter template %q: %w", req.Template.Name, err)
+		}
+	} else {
+		// Hardcoded fallback path.
+		pdf.SetY(marginTop)
 
-	// Render body text.
-	if err := setFont(pdf, "LiberationSans-Regular", fontSizeBody); err != nil {
-		return "", err
-	}
+		cfg := DefaultHeaderConfig()
+		y, err := RenderProfileHeader(pdf, req.Profile, req.Links, cfg)
+		if err != nil {
+			return "", fmt.Errorf("render header: %w", err)
+		}
 
-	y += 6
-	y, err = renderWrappedText(pdf, req.Letter.BodyText, marginLeft, y, usableWidth, fontSizeBody)
-	if err != nil {
-		return "", fmt.Errorf("render body: %w", err)
+		if err := setFont(pdf, "LiberationSans-Regular", fontSizeBody); err != nil {
+			return "", err
+		}
+
+		y += 6
+		y, err = renderWrappedText(pdf, req.Letter.BodyText, marginLeft, y, usableWidth, fontSizeBody)
+		if err != nil {
+			return "", fmt.Errorf("render body: %w", err)
+		}
+		_ = y
 	}
-	_ = y
 
 	ts := time.Now().Format("20060102-150405")
 	filename := fmt.Sprintf("cover-letter-%s.pdf", ts)

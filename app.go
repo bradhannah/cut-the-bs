@@ -1151,6 +1151,16 @@ func (a *App) ReorderTemplateElements(templateID int64, parentID *int64, ordered
 	return err
 }
 
+// ParseTemplateVariables scans a cover letter template for variable
+// placeholders ({{var}}) and guided prompts ({{prompt: text}}).
+func (a *App) ParseTemplateVariables(templateID int64) (domain.TemplateVariables, error) {
+	detail, err := a.templateSvc.GetDocumentTemplate(a.ctx, templateID)
+	if err != nil {
+		return domain.TemplateVariables{}, err
+	}
+	return a.templateSvc.ParseTemplateVariables(detail), nil
+}
+
 // =================================================================
 // Data Management Bindings
 // =================================================================

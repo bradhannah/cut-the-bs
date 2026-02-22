@@ -852,3 +852,147 @@ func TestTemplateService_CreateTemplateElement_DeepNestingRejected(t *testing.T)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not a loop container")
 }
+
+// =========================================================
+// T047 — Variable Parsing Tests
+// =========================================================
+
+func TestParseTemplateVariables_BasicVariables(t *testing.T) {
+	detail := domain.TemplateDetail{
+		DocumentTemplate: domain.DocumentTemplate{
+			ID:           1,
+			TemplateType: domain.TemplateTypeCoverLetter,
+		},
+		Elements: []domain.TemplateElement{
+			{
+				ID:          1,
+				ElementType: domain.ElementGreeting,
+				Config:      `{"text": "Dear {{company_name}} Team,", "font_size": 11, "space_after": 12}`,
+			},
+			{
+				ID:          2,
+				ElementType: domain.ElementBodyText,
+				Config:      `{"font_size": 11, "line_spacing": 1.15, "space_after": 12}`,
+			},
+		},
+	}
+
+	svc := NewTemplateService(nil)
+	result := svc.ParseTemplateVariables(detail)
+
+	require.Len(t, result.Variables, 1)
+	assert.Equal(t, "company_name", result.Variables[0].Name)
+	assert.Equal(t, domain.ElementGreeting, result.Variables[0].Source)
+	assert.Empty(t, result.Prompts)
+}
+
+func TestParseTemplateVariables_GuidedPrompts(t *testing.T) {
+	detail := domain.TemplateDetail{
+		DocumentTemplate: domain.DocumentTemplate{
+			ID:           1,
+			TemplateType: domain.TemplateTypeCoverLetter,
+		},
+		Elements: []domain.TemplateElement{
+			{
+				ID:          1,
+				ElementType: domain.ElementBodyText,
+				Config:      `{"text": "I am drawn to {{company_name}} because {{prompt: Why are you interested in this company?}}", "font_size": 11}`,
+			},
+		},
+	}
+
+	svc := NewTemplateService(nil)
+	result := svc.ParseTemplateVariables(detail)
+
+	require.Len(t, result.Variables, 1)
+	assert.Equal(t, "company_name", result.Variables[0].Name)
+
+	require.Len(t, result.Prompts, 1)
+	assert.Equal(t, "Why are you interested in this company?", result.Prompts[0].PromptText)
+	assert.Equal(t, domain.ElementBodyText, result.Prompts[0].Source)
+}
+
+func TestParseTemplateVariables_MultipleVariables(t *testing.T) {
+	detail := domain.TemplateDetail{
+		DocumentTemplate: domain.DocumentTemplate{
+			ID:           1,
+			TemplateType: domain.TemplateTypeCoverLetter,
+		},
+		Elements: []domain.TemplateElement{
+			{
+				ID:          1,
+				ElementType: domain.ElementGreeting,
+				Config:      `{"text": "Dear {{company_name}} Hiring Team,"}`,
+			},
+			{
+				ID:          2,
+				ElementType: domain.ElementBodyText,
+				Config:      `{"text": "I am applying for {{position_title}} at {{company_name}}."}`,
+			},
+			{
+				ID:          3,
+				ElementType: domain.ElementBodyText,
+				Config:      `{"text": "{{prompt: Describe your relevant experience}} {{prompt: Why this company?}}"}`,
+			},
+		},
+	}
+
+	svc := NewTemplateService(nil)
+	result := svc.ParseTemplateVariables(detail)
+
+	// company_name appears twice but should be deduplicated
+	require.Len(t, result.Variables, 2)
+	names := []string{result.Variables[0].Name, result.Variables[1].Name}
+	assert.Contains(t, names, "company_name")
+	assert.Contains(t, names, "position_title")
+
+	require.Len(t, result.Prompts, 2)
+	promptTexts := []string{result.Prompts[0].PromptText, result.Prompts[1].PromptText}
+	assert.Contains(t, promptTexts, "Describe your relevant experience")
+	assert.Contains(t, promptTexts, "Why this company?")
+}
+
+func TestParseTemplateVariables_NoVariables(t *testing.T) {
+	detail := domain.TemplateDetail{
+		DocumentTemplate: domain.DocumentTemplate{
+			ID:           1,
+			TemplateType: domain.TemplateTypeCoverLetter,
+		},
+		Elements: []domain.TemplateElement{
+			{
+				ID:          1,
+				ElementType: domain.ElementBodyText,
+				Config:      `{"text": "No variables here.", "font_size": 11}`,
+			},
+		},
+	}
+
+	svc := NewTemplateService(nil)
+	result := svc.ParseTemplateVariables(detail)
+
+	assert.Empty(t, result.Variables)
+	assert.Empty(t, result.Prompts)
+}
+
+func TestParseTemplateVariables_InvalidConfig(t *testing.T) {
+	detail := domain.TemplateDetail{
+		DocumentTemplate: domain.DocumentTemplate{
+			ID:           1,
+			TemplateType: domain.TemplateTypeCoverLetter,
+		},
+		Elements: []domain.TemplateElement{
+			{
+				ID:          1,
+				ElementType: domain.ElementBodyText,
+				Config:      `invalid json`,
+			},
+		},
+	}
+
+	svc := NewTemplateService(nil)
+	result := svc.ParseTemplateVariables(detail)
+
+	// Should not panic; returns empty results
+	assert.Empty(t, result.Variables)
+	assert.Empty(t, result.Prompts)
+}

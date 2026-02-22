@@ -470,8 +470,10 @@ type RenderResumeRequest struct {
 // RenderCoverLetterRequest holds all data needed to render a cover
 // letter PDF.
 type RenderCoverLetterRequest struct {
-	OutputDir string
-	Profile   UserProfile
-	Links     []ProfileLink
-	Letter    CoverLetter
+	Template        *TemplateDetail
+	OutputDir       string
+	Profile         UserProfile
+	Links           []ProfileLink
+	Letter          CoverLetter
+	SubstitutionMap map[string]string // variable_name → value for {{variable_name}} replacement
 }

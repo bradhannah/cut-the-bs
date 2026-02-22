@@ -3,8 +3,11 @@ package pdf
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
 
 	"cut-the-bs/internal/domain"
+	"cut-the-bs/internal/service"
 
 	"github.com/signintech/gopdf"
 )
@@ -16,6 +19,9 @@ type renderContext struct {
 	pdf  *gopdf.GoPdf
 	req  domain.RenderResumeRequest
 	tmpl domain.TemplateDetail
+
+	// Cover letter fields (populated when rendering a cover letter).
+	coverLetterReq *domain.RenderCoverLetterRequest
 
 	// Page geometry derived from template margins.
 	marginLeft   float64
@@ -52,6 +58,43 @@ func newRenderContext(
 	}
 
 	// Build child map for loop containers.
+	for _, el := range tmpl.Elements {
+		if el.ParentID != nil {
+			rc.childMap[*el.ParentID] = append(rc.childMap[*el.ParentID], el)
+		}
+	}
+
+	return rc
+}
+
+// newCoverLetterRenderContext builds a renderContext for cover letter
+// rendering from a template and cover letter request.
+func newCoverLetterRenderContext(
+	pdf *gopdf.GoPdf,
+	req domain.RenderCoverLetterRequest,
+	tmpl domain.TemplateDetail,
+) *renderContext {
+	rc := &renderContext{
+		pdf:  pdf,
+		tmpl: tmpl,
+		// Populate resume request fields from cover letter request
+		// so shared elements (profile_header, static_text, etc.) work.
+		req: domain.RenderResumeRequest{
+			Profile: req.Profile,
+			Links:   req.Links,
+		},
+		coverLetterReq: &req,
+		marginLeft:     tmpl.MarginLeft,
+		marginRight:    tmpl.MarginRight,
+		marginTop:      tmpl.MarginTop,
+		marginBottom:   tmpl.MarginBottom,
+		usableWidth:    letterWidth - tmpl.MarginLeft - tmpl.MarginRight,
+		y:              tmpl.MarginTop,
+		childMap:       make(map[int64][]domain.TemplateElement),
+	}
+
+	// Build child map for loop containers (cover letters don't use
+	// loops, but keep the mechanism for consistency).
 	for _, el := range tmpl.Elements {
 		if el.ParentID != nil {
 			rc.childMap[*el.ParentID] = append(rc.childMap[*el.ParentID], el)
@@ -118,6 +161,18 @@ func dispatchElement(rc *renderContext, el domain.TemplateElement) error {
 	case domain.ElementCertsLoop:
 		return renderCertsLoopElement(rc, el)
 
+	// Cover letter elements (T049)
+	case domain.ElementBodyText:
+		return renderBodyTextElement(rc, el)
+	case domain.ElementDate:
+		return renderDateElement(rc, el)
+	case domain.ElementGreeting:
+		return renderGreetingElement(rc, el)
+	case domain.ElementClosing:
+		return renderClosingElement(rc, el)
+	case domain.ElementRecipientAddress:
+		return renderRecipientAddressElement(rc, el)
+
 	default:
 		return fmt.Errorf("unknown element type: %q", el.ElementType)
 	}
@@ -128,9 +183,8 @@ func dispatchElement(rc *renderContext, el domain.TemplateElement) error {
 // =========================================================
 
 // renderSectionHeadingElement renders a section heading with optional
-// underline rule. Delegates to the shared renderSectionHeading (for
-// professional/underlined) and renderModernSectionHeading (for modern/
-// non-underlined) functions to guarantee byte-identical output.
+// underline rule. Uses config values (FontSize, Uppercase, Underline,
+// SpaceBefore, SpaceAfter, UnderlineWeight) to allow full customisation.
 //
 // When DataBinding is set, the heading is skipped entirely if the
 // bound data source is empty — matching the hardcoded templates.
@@ -145,22 +199,47 @@ func renderSectionHeadingElement(rc *renderContext, el domain.TemplateElement) e
 		return nil
 	}
 
+	fontSize := cfg.FontSize
+	if fontSize == 0 {
+		fontSize = fontSizeSection
+	}
+
+	if err := checkPageBreak(rc.pdf, &rc.y, fontSize+cfg.SpaceBefore+cfg.SpaceAfter+4); err != nil {
+		return err
+	}
+
+	rc.y += cfg.SpaceBefore
+
+	fontName := fontNameFromStyle(cfg.FontStyle)
+	if err := setFont(rc.pdf, fontName, fontSize); err != nil {
+		return err
+	}
+
+	text := cfg.Text
+	if cfg.Uppercase {
+		text = strings.ToUpper(text)
+	}
+
+	rc.pdf.SetX(rc.marginLeft)
+	rc.pdf.SetY(rc.y)
+	if err := rc.pdf.Cell(nil, text); err != nil {
+		return fmt.Errorf("render section heading: %w", err)
+	}
+
 	if cfg.Underline {
-		// Professional-style: uses shared renderSectionHeading which adds
-		// sectionGap before, fontSize+2 after text, underline rule, +4 after.
-		y, err := renderSectionHeading(rc.pdf, cfg.Text, rc.y, true)
-		if err != nil {
-			return err
+		// Advance past text, add baseline-to-underline gap (2pt),
+		// draw the rule, then add SpaceAfter below the rule.
+		rc.y += fontSize + 2
+		underlineWeight := cfg.UnderlineWeight
+		if underlineWeight == 0 {
+			underlineWeight = 0.5
 		}
-		rc.y = y
+		rc.pdf.SetLineWidth(underlineWeight)
+		rc.pdf.Line(rc.marginLeft, rc.y, rc.marginLeft+rc.usableWidth, rc.y)
+		rc.y += cfg.SpaceAfter
 	} else {
-		// Modern-style: uses shared renderModernSectionHeading which adds
-		// modernSectionGap before, fontSize+6 after text, no underline.
-		y, err := renderModernSectionHeading(rc.pdf, cfg.Text, rc.y)
-		if err != nil {
-			return err
-		}
-		rc.y = y
+		// No underline: advance past text + SpaceAfter directly.
+		rc.y += fontSize + cfg.SpaceAfter
 	}
 
 	return nil
@@ -733,34 +812,277 @@ func renderWorkOutcomesElement(
 }
 
 // renderEducationLoopElement iterates over academic credentials.
-// Delegates to the shared renderAcademics.
+// Renders each entry individually via the shared renderAcademics
+// helper, applying configurable entry_gap spacing between entries.
 func renderEducationLoopElement(rc *renderContext, el domain.TemplateElement) error {
 	if len(rc.req.Academics) == 0 {
 		return nil
 	}
 
-	var err error
-	rc.y, err = renderAcademics(rc.pdf, rc.req.Academics, rc.y)
-	if err != nil {
-		return fmt.Errorf("education: %w", err)
+	var cfg EducationLoopConfig
+	if err := json.Unmarshal([]byte(el.Config), &cfg); err != nil {
+		return fmt.Errorf("parse education_loop config: %w", err)
+	}
+
+	for i, ac := range rc.req.Academics {
+		if i > 0 {
+			rc.y += cfg.EntryGap
+		}
+		var err error
+		rc.y, err = renderAcademics(rc.pdf, []domain.AcademicCredential{ac}, rc.y)
+		if err != nil {
+			return fmt.Errorf("education entry %q: %w", ac.FieldOfStudy, err)
+		}
 	}
 
 	return nil
 }
 
 // renderCertsLoopElement iterates over certifications.
-// Delegates to the shared renderCertifications.
+// Renders each entry individually via the shared renderCertifications
+// helper, applying configurable entry_gap spacing between entries.
 func renderCertsLoopElement(rc *renderContext, el domain.TemplateElement) error {
 	if len(rc.req.Certs) == 0 {
 		return nil
 	}
 
-	var err error
-	rc.y, err = renderCertifications(rc.pdf, rc.req.Certs, rc.y)
-	if err != nil {
-		return fmt.Errorf("certifications: %w", err)
+	var cfg CertsLoopConfig
+	if err := json.Unmarshal([]byte(el.Config), &cfg); err != nil {
+		return fmt.Errorf("parse certifications_loop config: %w", err)
 	}
 
+	for i, cert := range rc.req.Certs {
+		if i > 0 {
+			rc.y += cfg.EntryGap
+		}
+		var err error
+		rc.y, err = renderCertifications(rc.pdf, []domain.Certification{cert}, rc.y)
+		if err != nil {
+			return fmt.Errorf("certification entry %q: %w", cert.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// =========================================================
+// T049: Cover letter element renderers
+// =========================================================
+
+// renderBodyTextElement renders the cover letter body text. When
+// SubstitutionMap is present, variable placeholders in the body
+// text are replaced before rendering.
+func renderBodyTextElement(rc *renderContext, el domain.TemplateElement) error {
+	var cfg BodyTextConfig
+	if err := json.Unmarshal([]byte(el.Config), &cfg); err != nil {
+		return fmt.Errorf("parse body_text config: %w", err)
+	}
+
+	if rc.coverLetterReq == nil {
+		return nil // no cover letter data
+	}
+
+	bodyText := rc.coverLetterReq.Letter.BodyText
+	if bodyText == "" {
+		return nil
+	}
+
+	// Apply variable substitutions.
+	if len(rc.coverLetterReq.SubstitutionMap) > 0 {
+		bodyText = service.ApplySubstitutions(bodyText, rc.coverLetterReq.SubstitutionMap)
+	}
+
+	fontSize := cfg.FontSize
+	if fontSize == 0 {
+		fontSize = fontSizeBody
+	}
+
+	if err := setFont(rc.pdf, "LiberationSans-Regular", fontSize); err != nil {
+		return err
+	}
+
+	var err error
+	rc.y, err = renderWrappedText(rc.pdf, bodyText, rc.marginLeft, rc.y, rc.usableWidth, fontSize)
+	if err != nil {
+		return fmt.Errorf("render body text: %w", err)
+	}
+
+	rc.y += cfg.SpaceAfter
+	return nil
+}
+
+// renderDateElement renders the current date on the cover letter.
+func renderDateElement(rc *renderContext, el domain.TemplateElement) error {
+	var cfg DateConfig
+	if err := json.Unmarshal([]byte(el.Config), &cfg); err != nil {
+		return fmt.Errorf("parse date config: %w", err)
+	}
+
+	fontSize := cfg.FontSize
+	if fontSize == 0 {
+		fontSize = fontSizeBody
+	}
+
+	format := cfg.Format
+	if format == "" {
+		format = "January 2, 2006"
+	}
+
+	dateStr := time.Now().Format(format)
+
+	if err := setFont(rc.pdf, "LiberationSans-Regular", fontSize); err != nil {
+		return err
+	}
+
+	if err := checkPageBreak(rc.pdf, &rc.y, fontSize+lineSpacing); err != nil {
+		return err
+	}
+
+	switch cfg.Alignment {
+	case "right":
+		w, err := rc.pdf.MeasureTextWidth(dateStr)
+		if err != nil {
+			return fmt.Errorf("measure date width: %w", err)
+		}
+		rc.pdf.SetX(rc.marginLeft + rc.usableWidth - w)
+	case "center":
+		w, err := rc.pdf.MeasureTextWidth(dateStr)
+		if err != nil {
+			return fmt.Errorf("measure date width: %w", err)
+		}
+		rc.pdf.SetX(rc.marginLeft + (rc.usableWidth-w)/2)
+	default: // "left"
+		rc.pdf.SetX(rc.marginLeft)
+	}
+
+	rc.pdf.SetY(rc.y)
+	if err := rc.pdf.Cell(nil, dateStr); err != nil {
+		return fmt.Errorf("render date: %w", err)
+	}
+
+	rc.y += fontSize + lineSpacing + cfg.SpaceAfter
+	return nil
+}
+
+// renderGreetingElement renders the cover letter greeting/salutation.
+// Supports variable substitution in the text.
+func renderGreetingElement(rc *renderContext, el domain.TemplateElement) error {
+	var cfg GreetingConfig
+	if err := json.Unmarshal([]byte(el.Config), &cfg); err != nil {
+		return fmt.Errorf("parse greeting config: %w", err)
+	}
+
+	text := cfg.Text
+	if text == "" {
+		return nil
+	}
+
+	// Apply variable substitutions.
+	if rc.coverLetterReq != nil && len(rc.coverLetterReq.SubstitutionMap) > 0 {
+		text = service.ApplySubstitutions(text, rc.coverLetterReq.SubstitutionMap)
+	}
+
+	fontSize := cfg.FontSize
+	if fontSize == 0 {
+		fontSize = fontSizeBody
+	}
+
+	if err := setFont(rc.pdf, "LiberationSans-Regular", fontSize); err != nil {
+		return err
+	}
+
+	if err := checkPageBreak(rc.pdf, &rc.y, fontSize+lineSpacing); err != nil {
+		return err
+	}
+
+	rc.pdf.SetX(rc.marginLeft)
+	rc.pdf.SetY(rc.y)
+	if err := rc.pdf.Cell(nil, text); err != nil {
+		return fmt.Errorf("render greeting: %w", err)
+	}
+
+	rc.y += fontSize + lineSpacing + cfg.SpaceAfter
+	return nil
+}
+
+// renderClosingElement renders the cover letter closing/sign-off.
+// Supports variable substitution in the text.
+func renderClosingElement(rc *renderContext, el domain.TemplateElement) error {
+	var cfg ClosingConfig
+	if err := json.Unmarshal([]byte(el.Config), &cfg); err != nil {
+		return fmt.Errorf("parse closing config: %w", err)
+	}
+
+	text := cfg.Text
+	if text == "" {
+		return nil
+	}
+
+	// Apply variable substitutions.
+	if rc.coverLetterReq != nil && len(rc.coverLetterReq.SubstitutionMap) > 0 {
+		text = service.ApplySubstitutions(text, rc.coverLetterReq.SubstitutionMap)
+	}
+
+	fontSize := cfg.FontSize
+	if fontSize == 0 {
+		fontSize = fontSizeBody
+	}
+
+	if err := setFont(rc.pdf, "LiberationSans-Regular", fontSize); err != nil {
+		return err
+	}
+
+	if err := checkPageBreak(rc.pdf, &rc.y, fontSize+lineSpacing); err != nil {
+		return err
+	}
+
+	rc.pdf.SetX(rc.marginLeft)
+	rc.pdf.SetY(rc.y)
+	if err := rc.pdf.Cell(nil, text); err != nil {
+		return fmt.Errorf("render closing: %w", err)
+	}
+
+	rc.y += fontSize + lineSpacing + cfg.SpaceAfter
+	return nil
+}
+
+// renderRecipientAddressElement renders recipient address lines on
+// the cover letter. The address text is pulled from the SubstitutionMap
+// using the key "recipient_address".
+func renderRecipientAddressElement(rc *renderContext, el domain.TemplateElement) error {
+	var cfg RecipientAddressConfig
+	if err := json.Unmarshal([]byte(el.Config), &cfg); err != nil {
+		return fmt.Errorf("parse recipient_address config: %w", err)
+	}
+
+	if rc.coverLetterReq == nil {
+		return nil
+	}
+
+	address := ""
+	if rc.coverLetterReq.SubstitutionMap != nil {
+		address = rc.coverLetterReq.SubstitutionMap["recipient_address"]
+	}
+	if address == "" {
+		return nil // no address provided, skip
+	}
+
+	fontSize := cfg.FontSize
+	if fontSize == 0 {
+		fontSize = fontSizeBody
+	}
+
+	if err := setFont(rc.pdf, "LiberationSans-Regular", fontSize); err != nil {
+		return err
+	}
+
+	var err error
+	rc.y, err = renderWrappedText(rc.pdf, address, rc.marginLeft, rc.y, rc.usableWidth, fontSize)
+	if err != nil {
+		return fmt.Errorf("render recipient address: %w", err)
+	}
+
+	rc.y += cfg.SpaceAfter
 	return nil
 }
 

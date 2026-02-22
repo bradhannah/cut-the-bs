@@ -613,7 +613,7 @@ export interface ResumeTemplate {
 }
 
 export interface ExportRequest {
-  template_id: string;
+  template_id: number;
   lens_id?: number | null;
   summary_ids: number[];
   master_summary_id?: number | null;
@@ -625,11 +625,13 @@ export interface ExportRequest {
   certification_ids: number[];
   descriptor_ids: number[];
   core_expertise_ids: number[];
+  substitution_map?: Record<string, string>;
 }
 
 export interface ResumeExport {
   id: number;
   template_id: string;
+  template_ref_id?: number | null;
   file_path: string;
   summary_id: number | null;
   lens_id: number | null;
@@ -1166,6 +1168,29 @@ export async function reorderTemplateElements(
     parentID,
     orderedIDs
   );
+}
+
+// --- Template Variables API ---
+
+export interface TemplateVariable {
+  name: string;
+  source: string;
+}
+
+export interface GuidedPrompt {
+  prompt_text: string;
+  source: string;
+}
+
+export interface TemplateVariables {
+  variables: TemplateVariable[];
+  prompts: GuidedPrompt[];
+}
+
+export async function parseTemplateVariables(
+  templateID: number
+): Promise<TemplateVariables> {
+  return call<TemplateVariables>("ParseTemplateVariables", templateID);
 }
 
 // --- Template Import/Export API ---

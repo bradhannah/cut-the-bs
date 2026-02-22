@@ -189,6 +189,45 @@ type CertDetailConfig struct {
 type WorkSummaryConfig struct{}
 
 // =========================================================
+// Cover letter element config structs
+// =========================================================
+
+// BodyTextConfig controls cover letter body text rendering.
+type BodyTextConfig struct {
+	FontSize    float64 `json:"font_size"`
+	LineSpacing float64 `json:"line_spacing"`
+	SpaceAfter  float64 `json:"space_after"`
+}
+
+// DateConfig controls cover letter date rendering.
+type DateConfig struct {
+	FontSize   float64 `json:"font_size"`
+	Format     string  `json:"format"`    // Go time format string e.g. "January 2, 2006"
+	Alignment  string  `json:"alignment"` // "left", "center", "right"
+	SpaceAfter float64 `json:"space_after"`
+}
+
+// GreetingConfig controls cover letter greeting rendering.
+type GreetingConfig struct {
+	Text       string  `json:"text"` // e.g. "Dear Hiring Manager,"
+	FontSize   float64 `json:"font_size"`
+	SpaceAfter float64 `json:"space_after"`
+}
+
+// ClosingConfig controls cover letter closing rendering.
+type ClosingConfig struct {
+	Text       string  `json:"text"` // e.g. "Sincerely,"
+	FontSize   float64 `json:"font_size"`
+	SpaceAfter float64 `json:"space_after"`
+}
+
+// RecipientAddressConfig controls cover letter recipient address rendering.
+type RecipientAddressConfig struct {
+	FontSize   float64 `json:"font_size"`
+	SpaceAfter float64 `json:"space_after"`
+}
+
+// =========================================================
 // Helper to serialize config structs to JSON
 // =========================================================
 
@@ -539,4 +578,126 @@ func ModernTemplate() domain.TemplateDetail {
 // int64Ptr is a helper to create an *int64 from a literal.
 func int64Ptr(v int64) *int64 {
 	return &v
+}
+
+// =========================================================
+// Built-in Formal Cover Letter template
+// =========================================================
+
+// FormalCoverLetterTemplate returns the built-in Formal cover letter
+// template as a TemplateDetail. Standard business letter format with
+// date, recipient address, greeting, body text, closing, and
+// signature name.
+func FormalCoverLetterTemplate() domain.TemplateDetail {
+	return domain.TemplateDetail{
+		DocumentTemplate: domain.DocumentTemplate{
+			ID:           3,
+			Name:         "Formal",
+			Description:  "Traditional business letter with date, recipient address, and formal salutation",
+			TemplateType: domain.TemplateTypeCoverLetter,
+			IsBuiltin:    true,
+			MarginTop:    72.0, // 1 inch
+			MarginBottom: 72.0,
+			MarginLeft:   72.0,
+			MarginRight:  72.0,
+		},
+		Elements: []domain.TemplateElement{
+			{ID: 50, TemplateID: 3, ParentID: nil, ElementType: domain.ElementProfileHeader, SortOrder: 0,
+				Config: mustMarshal(ProfileHeaderConfig{
+					NameFontSize: 18.0, DetailFontSize: 10.0,
+					Alignment: "center", LinkSeparator: " | ",
+					ShowLinks: true, ShowLinksInline: false,
+					SpaceAfter: 6.0,
+				})},
+			{ID: 51, TemplateID: 3, ParentID: nil, ElementType: domain.ElementHorizontalRule, SortOrder: 1,
+				Config: mustMarshal(HorizontalRuleConfig{
+					Weight: 0.5, SpaceBefore: 2.0, SpaceAfter: 14.0,
+				})},
+			{ID: 52, TemplateID: 3, ParentID: nil, ElementType: domain.ElementDate, SortOrder: 2,
+				Config: mustMarshal(DateConfig{
+					FontSize: 10.0, Format: "January 2, 2006",
+					Alignment: "left", SpaceAfter: 14.0,
+				})},
+			{ID: 53, TemplateID: 3, ParentID: nil, ElementType: domain.ElementRecipientAddress, SortOrder: 3,
+				Config: mustMarshal(RecipientAddressConfig{
+					FontSize: 10.0, SpaceAfter: 14.0,
+				})},
+			{ID: 54, TemplateID: 3, ParentID: nil, ElementType: domain.ElementGreeting, SortOrder: 4,
+				Config: mustMarshal(GreetingConfig{
+					Text: "Dear {{hiring_manager}},", FontSize: 10.0,
+					SpaceAfter: 10.0,
+				})},
+			{ID: 55, TemplateID: 3, ParentID: nil, ElementType: domain.ElementBodyText, SortOrder: 5,
+				Config: mustMarshal(BodyTextConfig{
+					FontSize: 10.0, LineSpacing: 3.0, SpaceAfter: 10.0,
+				})},
+			{ID: 56, TemplateID: 3, ParentID: nil, ElementType: domain.ElementClosing, SortOrder: 6,
+				Config: mustMarshal(ClosingConfig{
+					Text: "Sincerely,", FontSize: 10.0,
+					SpaceAfter: 28.0,
+				})},
+			{ID: 57, TemplateID: 3, ParentID: nil, ElementType: domain.ElementStaticText, SortOrder: 7,
+				Config: mustMarshal(StaticTextConfig{
+					Text: "{{signer_name}}", FontSize: 10.0,
+					FontStyle: "regular", Alignment: "left",
+					SpaceBefore: 0.0, SpaceAfter: 0.0,
+				})},
+		},
+	}
+}
+
+// =========================================================
+// Built-in Casual Cover Letter template
+// =========================================================
+
+// CasualCoverLetterTemplate returns the built-in Casual cover letter
+// template as a TemplateDetail. A relaxed format with no date or
+// recipient address — just a greeting, body, and sign-off.
+func CasualCoverLetterTemplate() domain.TemplateDetail {
+	return domain.TemplateDetail{
+		DocumentTemplate: domain.DocumentTemplate{
+			ID:           4,
+			Name:         "Casual",
+			Description:  "Relaxed format with greeting, body text, and casual sign-off",
+			TemplateType: domain.TemplateTypeCoverLetter,
+			IsBuiltin:    true,
+			MarginTop:    72.0,
+			MarginBottom: 72.0,
+			MarginLeft:   72.0,
+			MarginRight:  72.0,
+		},
+		Elements: []domain.TemplateElement{
+			{ID: 58, TemplateID: 4, ParentID: nil, ElementType: domain.ElementProfileHeader, SortOrder: 0,
+				Config: mustMarshal(ProfileHeaderConfig{
+					NameFontSize: 18.0, DetailFontSize: 10.0,
+					Alignment: "center", LinkSeparator: " | ",
+					ShowLinks: true, ShowLinksInline: false,
+					SpaceAfter: 6.0,
+				})},
+			{ID: 59, TemplateID: 4, ParentID: nil, ElementType: domain.ElementHorizontalRule, SortOrder: 1,
+				Config: mustMarshal(HorizontalRuleConfig{
+					Weight: 0.3, SpaceBefore: 2.0, SpaceAfter: 18.0,
+				})},
+			{ID: 60, TemplateID: 4, ParentID: nil, ElementType: domain.ElementGreeting, SortOrder: 2,
+				Config: mustMarshal(GreetingConfig{
+					Text: "Hi {{hiring_manager}},", FontSize: 10.0,
+					SpaceAfter: 10.0,
+				})},
+			{ID: 61, TemplateID: 4, ParentID: nil, ElementType: domain.ElementBodyText, SortOrder: 3,
+				Config: mustMarshal(BodyTextConfig{
+					FontSize: 10.0, LineSpacing: 3.0, SpaceAfter: 10.0,
+				})},
+			{ID: 62, TemplateID: 4, ParentID: nil, ElementType: domain.ElementClosing, SortOrder: 4,
+				Config: mustMarshal(ClosingConfig{
+					Text: "Best regards,", FontSize: 10.0,
+					SpaceAfter: 24.0,
+				})},
+			{ID: 63, TemplateID: 4, ParentID: nil, ElementType: domain.ElementStaticText, SortOrder: 5,
+				Config: mustMarshal(StaticTextConfig{
+					Text: "{{signer_name}}", FontSize: 10.0,
+					FontStyle: "regular", Alignment: "left",
+					SpaceBefore: 0.0, SpaceAfter: 0.0,
+				})},
+		},
+	}
 }

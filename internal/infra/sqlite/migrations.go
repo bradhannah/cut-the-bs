@@ -1018,6 +1018,46 @@ func migrateV7(store *Store) error {
 
 		`UPDATE resume_export SET template_ref_id = 1 WHERE template_id = 'professional'`,
 		`UPDATE resume_export SET template_ref_id = 2 WHERE template_id = 'modern'`,
+
+		// === Seed built-in Formal cover letter template ===
+
+		`INSERT INTO document_template (id, name, description, template_type, is_builtin, margin_top, margin_bottom, margin_left, margin_right)
+		 VALUES (3, 'Formal', 'Traditional business letter with date, recipient address, and formal salutation', 'cover_letter', 1, 72.0, 72.0, 72.0, 72.0)`,
+
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (50, 3, NULL, 'profile_header', '{"name_font_size":18.0,"detail_font_size":10.0,"alignment":"center","link_separator":" | ","show_links":true,"show_links_inline":false,"space_after":6.0}', 0)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (51, 3, NULL, 'horizontal_rule', '{"weight":0.5,"space_before":2.0,"space_after":14.0}', 1)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (52, 3, NULL, 'date', '{"font_size":10.0,"format":"January 2, 2006","alignment":"left","space_after":14.0}', 2)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (53, 3, NULL, 'recipient_address', '{"font_size":10.0,"space_after":14.0}', 3)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (54, 3, NULL, 'greeting', '{"text":"Dear {{hiring_manager}},","font_size":10.0,"space_after":10.0}', 4)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (55, 3, NULL, 'body_text', '{"font_size":10.0,"line_spacing":3.0,"space_after":10.0}', 5)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (56, 3, NULL, 'closing', '{"text":"Sincerely,","font_size":10.0,"space_after":28.0}', 6)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (57, 3, NULL, 'static_text', '{"text":"{{signer_name}}","font_size":10.0,"font_style":"regular","alignment":"left","space_before":0.0,"space_after":0.0}', 7)`,
+
+		// === Seed built-in Casual cover letter template ===
+
+		`INSERT INTO document_template (id, name, description, template_type, is_builtin, margin_top, margin_bottom, margin_left, margin_right)
+		 VALUES (4, 'Casual', 'Relaxed format with greeting, body text, and casual sign-off', 'cover_letter', 1, 72.0, 72.0, 72.0, 72.0)`,
+
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (58, 4, NULL, 'profile_header', '{"name_font_size":18.0,"detail_font_size":10.0,"alignment":"center","link_separator":" | ","show_links":true,"show_links_inline":false,"space_after":6.0}', 0)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (59, 4, NULL, 'horizontal_rule', '{"weight":0.3,"space_before":2.0,"space_after":18.0}', 1)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (60, 4, NULL, 'greeting', '{"text":"Hi {{hiring_manager}},","font_size":10.0,"space_after":10.0}', 2)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (61, 4, NULL, 'body_text', '{"font_size":10.0,"line_spacing":3.0,"space_after":10.0}', 3)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (62, 4, NULL, 'closing', '{"text":"Best regards,","font_size":10.0,"space_after":24.0}', 4)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (63, 4, NULL, 'static_text', '{"text":"{{signer_name}}","font_size":10.0,"font_style":"regular","alignment":"left","space_before":0.0,"space_after":0.0}', 5)`,
 	}
 
 	for _, stmt := range statements {

@@ -292,20 +292,25 @@ type ResumeTemplate struct {
 	PreviewURL  string `json:"preview_url"`
 }
 
-// ExportRequest holds the selections for generating a resume export.
+// ExportRequest holds the selections for generating a resume or
+// cover letter export. When used for a cover letter template, the
+// SubstitutionMap carries variable replacements (e.g.,
+// "hiring_manager" -> "Jane Doe") and content selection fields
+// may be empty.
 type ExportRequest struct {
-	TemplateID         int64         `json:"template_id"`
-	LensID             *int64        `json:"lens_id"`
-	SummaryIDs         []int64       `json:"summary_ids"`
-	MasterSummaryID    *int64        `json:"master_summary_id"`
-	WorkHistoryIDs     []int64       `json:"work_history_ids"`
-	BulletIDs          []int64       `json:"bullet_ids"`
-	SkillIDs           []int64       `json:"skill_ids"`
-	SkillSortOverrides map[int64]int `json:"skill_sort_overrides"`
-	AcademicIDs        []int64       `json:"academic_ids"`
-	CertificationIDs   []int64       `json:"certification_ids"`
-	DescriptorIDs      []int64       `json:"descriptor_ids"`
-	CoreExpertiseIDs   []int64       `json:"core_expertise_ids"`
+	TemplateID         int64             `json:"template_id"`
+	LensID             *int64            `json:"lens_id"`
+	SummaryIDs         []int64           `json:"summary_ids"`
+	MasterSummaryID    *int64            `json:"master_summary_id"`
+	WorkHistoryIDs     []int64           `json:"work_history_ids"`
+	BulletIDs          []int64           `json:"bullet_ids"`
+	SkillIDs           []int64           `json:"skill_ids"`
+	SkillSortOverrides map[int64]int     `json:"skill_sort_overrides"`
+	AcademicIDs        []int64           `json:"academic_ids"`
+	CertificationIDs   []int64           `json:"certification_ids"`
+	DescriptorIDs      []int64           `json:"descriptor_ids"`
+	CoreExpertiseIDs   []int64           `json:"core_expertise_ids"`
+	SubstitutionMap    map[string]string `json:"substitution_map,omitempty"`
 }
 
 // CoverLetter is a cover letter document.

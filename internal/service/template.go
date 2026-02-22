@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"cut-the-bs/internal/domain"
@@ -275,4 +276,103 @@ func validateConfigJSON(config string) error {
 		return fmt.Errorf("config must be valid JSON")
 	}
 	return nil
+}
+
+// =========================================================
+// Template Variable Parsing (T050)
+// =========================================================
+
+// variablePattern matches {{variable_name}} placeholders.
+// Captures: group 1 = full content between braces.
+var variablePattern = regexp.MustCompile(`\{\{([^}]+)\}\}`)
+
+// ParseTemplateVariables scans all elements in a cover letter template
+// for {{variable_name}} and {{prompt: descriptive text}} patterns.
+// Variables are deduplicated by name. Prompts are returned in order.
+func (s *TemplateService) ParseTemplateVariables(detail domain.TemplateDetail) domain.TemplateVariables {
+	result := domain.TemplateVariables{
+		Variables: make([]domain.TemplateVariable, 0),
+		Prompts:   make([]domain.GuidedPrompt, 0),
+	}
+	seenVars := make(map[string]bool)
+
+	for _, el := range detail.Elements {
+		text := extractTextFromConfig(el.Config)
+		if text == "" {
+			continue
+		}
+
+		matches := variablePattern.FindAllStringSubmatch(text, -1)
+		for _, match := range matches {
+			inner := strings.TrimSpace(match[1])
+			if inner == "" {
+				continue
+			}
+
+			if strings.HasPrefix(inner, "prompt:") || strings.HasPrefix(inner, "prompt: ") {
+				promptText := strings.TrimSpace(strings.TrimPrefix(inner, "prompt:"))
+				if promptText != "" {
+					result.Prompts = append(result.Prompts, domain.GuidedPrompt{
+						PromptText: promptText,
+						Source:     el.ElementType,
+					})
+				}
+			} else {
+				if !seenVars[inner] {
+					seenVars[inner] = true
+					result.Variables = append(result.Variables, domain.TemplateVariable{
+						Name:   inner,
+						Source: el.ElementType,
+					})
+				}
+			}
+		}
+	}
+
+	return result
+}
+
+// ApplySubstitutions replaces all {{variable_name}} and {{prompt: text}}
+// placeholders in the given text with values from the substitution map.
+// Missing variables are replaced with empty strings.
+func ApplySubstitutions(text string, subs map[string]string) string {
+	if subs == nil || text == "" {
+		return text
+	}
+	return variablePattern.ReplaceAllStringFunc(text, func(match string) string {
+		inner := strings.TrimSpace(match[2 : len(match)-2])
+		// Check for prompt: prefix
+		if strings.HasPrefix(inner, "prompt:") || strings.HasPrefix(inner, "prompt: ") {
+			promptText := strings.TrimSpace(strings.TrimPrefix(inner, "prompt:"))
+			key := "prompt:" + promptText
+			if val, ok := subs[key]; ok {
+				return val
+			}
+			return "" // unresolved prompt
+		}
+		// Regular variable
+		if val, ok := subs[inner]; ok {
+			return val
+		}
+		return "" // unresolved variable
+	})
+}
+
+// extractTextFromConfig attempts to extract the "text" field from a
+// JSON config string. Returns empty string if parsing fails or no
+// text field exists.
+func extractTextFromConfig(config string) string {
+	if config == "" || config == "{}" {
+		return ""
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(config), &parsed); err != nil {
+		return ""
+	}
+	if text, ok := parsed["text"]; ok {
+		if s, ok := text.(string); ok {
+			return s
+		}
+	}
+	return ""
 }

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import {
-    listTemplates,
+    listDocumentTemplates,
     listWorkHistory,
     listSkillsByCategory,
     listAcademicCredentials,
@@ -14,8 +14,9 @@
     getLensExportSelections,
     createExport,
     openExportFile,
+    parseTemplateVariables,
     addToast,
-    type ResumeTemplate,
+    type DocumentTemplate,
     type WorkHistoryEntry,
     type SkillCategoryWithSkills,
     type AcademicCredential,
@@ -26,12 +27,15 @@
     type ResumeExport,
     type ExportRequest,
     type Lens,
+    type TemplateVariable,
+    type GuidedPrompt,
   } from "../services/api";
   import LoadingSpinner from "../components/LoadingSpinner.svelte";
+  import PromptDialog from "../components/coverletter/PromptDialog.svelte";
   import { formatTimestamp } from "../services/dateFormat";
 
   // --- Data ---
-  let templates: ResumeTemplate[] = [];
+  let docTemplates: DocumentTemplate[] = [];
   let workHistory: WorkHistoryEntry[] = [];
   let skillCategories: SkillCategoryWithSkills[] = [];
   let academics: AcademicCredential[] = [];
@@ -47,7 +51,7 @@
   let skillCategoriesExpanded = true;
 
   // --- Selections ---
-  let selectedTemplate = "";
+  let selectedTemplateId: number | null = null;
   let selectedLensId: number | null = null;
   let selectedSummaryIds: Set<number> = new Set();
   let masterSummaryId: number | null = null;
@@ -59,6 +63,24 @@
   let selectedDescriptorIds: Set<number> = new Set();
   let selectedCoreExpertiseIds: Set<number> = new Set();
 
+  // --- Cover letter prompt dialog ---
+  let showPromptDialog = false;
+  let promptVariables: TemplateVariable[] = [];
+  let promptPrompts: GuidedPrompt[] = [];
+  let promptPrefilled: Record<string, string> = {};
+
+  // --- Derived ---
+  $: resumeTemplates = docTemplates.filter(
+    (t) => t.template_type === "resume"
+  );
+  $: coverLetterTemplates = docTemplates.filter(
+    (t) => t.template_type === "cover_letter"
+  );
+  $: selectedTemplate = docTemplates.find(
+    (t) => t.id === selectedTemplateId
+  ) || null;
+  $: isCoverLetter = selectedTemplate?.template_type === "cover_letter";
+
   onMount(async () => {
     await loadAllData();
   });
@@ -67,7 +89,7 @@
     loading = true;
     try {
       const results = await Promise.all([
-        listTemplates(),
+        listDocumentTemplates(),
         listWorkHistory(),
         listSkillsByCategory(),
         listAcademicCredentials(),
@@ -79,7 +101,7 @@
         listCoreExpertise(),
       ]);
 
-      templates = results[0] || [];
+      docTemplates = results[0] || [];
       workHistory = results[1] || [];
       skillCategories = results[2] || [];
       academics = results[3] || [];
@@ -90,9 +112,12 @@
       lenses = results[8] || [];
       coreExpertise = results[9] || [];
 
-      // Default to first template.
-      if (templates.length > 0 && !selectedTemplate) {
-        selectedTemplate = templates[0].id;
+      // Default to first resume template.
+      if (docTemplates.length > 0 && selectedTemplateId === null) {
+        const firstResume = docTemplates.find(
+          (t) => t.template_type === "resume"
+        );
+        selectedTemplateId = firstResume ? firstResume.id : docTemplates[0].id;
       }
     } finally {
       loading = false;
@@ -281,19 +306,45 @@
     selectedDescriptorIds.size > 0 ||
     selectedCoreExpertiseIds.size > 0;
 
-  $: canGenerate = selectedTemplate && hasContent && !generating;
+  $: canGenerate =
+    selectedTemplateId !== null &&
+    (isCoverLetter || hasContent) &&
+    !generating;
 
   // --- Generate ---
   async function handleGenerate(): Promise<void> {
-    if (!canGenerate) {
+    if (!canGenerate || selectedTemplateId === null) {
       addToast("error", "Select a template and at least one content item");
       return;
     }
 
+    // For cover letter templates, collect variables/prompts first.
+    if (isCoverLetter) {
+      try {
+        const vars = await parseTemplateVariables(selectedTemplateId);
+        if (
+          (vars.variables && vars.variables.length > 0) ||
+          (vars.prompts && vars.prompts.length > 0)
+        ) {
+          promptVariables = vars.variables || [];
+          promptPrompts = vars.prompts || [];
+          promptPrefilled = {};
+          showPromptDialog = true;
+          return; // Wait for dialog submit.
+        }
+        // No variables — proceed directly.
+        await generateCoverLetter({});
+      } catch {
+        // Toast already shown.
+      }
+      return;
+    }
+
+    // Resume export.
     generating = true;
     try {
       const req: ExportRequest = {
-        template_id: selectedTemplate,
+        template_id: selectedTemplateId,
         lens_id: selectedLensId,
         summary_ids: [...selectedSummaryIds],
         master_summary_id: masterSummaryId,
@@ -309,10 +360,52 @@
       await createExport(req);
       exports = await listExports();
     } catch {
-      // Toast already shown
+      // Toast already shown.
     } finally {
       generating = false;
     }
+  }
+
+  async function generateCoverLetter(
+    substitutions: Record<string, string>
+  ): Promise<void> {
+    if (selectedTemplateId === null) return;
+    generating = true;
+    try {
+      const req: ExportRequest = {
+        template_id: selectedTemplateId,
+        lens_id: selectedLensId,
+        summary_ids: [],
+        master_summary_id: null,
+        work_history_ids: [],
+        bullet_ids: [],
+        skill_ids: [],
+        skill_sort_overrides: {},
+        academic_ids: [],
+        certification_ids: [],
+        descriptor_ids: [],
+        core_expertise_ids: [],
+        substitution_map:
+          Object.keys(substitutions).length > 0 ? substitutions : undefined,
+      };
+      await createExport(req);
+      exports = await listExports();
+    } catch {
+      // Toast already shown.
+    } finally {
+      generating = false;
+    }
+  }
+
+  function handlePromptSubmit(
+    e: CustomEvent<{ substitutions: Record<string, string> }>
+  ): void {
+    showPromptDialog = false;
+    generateCoverLetter(e.detail.substitutions);
+  }
+
+  function handlePromptCancel(): void {
+    showPromptDialog = false;
   }
 
   async function handleOpenExport(exportId: number): Promise<void> {
@@ -324,14 +417,14 @@
   }
 
   function getTemplateName(templateId: string): string {
-    const t = templates.find((t) => t.id === templateId);
-    return t ? t.name : templateId;
+    // templateId in exports is the template name (string snapshot).
+    return templateId;
   }
 </script>
 
 <div class="export-page">
   <div class="page-header">
-    <h2>Export Resume</h2>
+    <h2>{isCoverLetter ? "Export Cover Letter" : "Export Resume"}</h2>
     <button
       class="btn btn-primary btn-generate"
       on:click={handleGenerate}
@@ -341,8 +434,7 @@
     </button>
   </div>
   <p class="page-description">
-    Select a template and the content to include in your resume, then generate a
-    PDF.
+    Select a template and the content to include, then generate a PDF.
   </p>
 
   {#if loading}
@@ -354,22 +446,48 @@
         <!-- Template Selection -->
         <section class="selection-section">
           <h3 class="section-title">Template</h3>
-          <div class="template-grid">
-            {#each templates as template (template.id)}
-              <button
-                class="template-card"
-                class:selected={selectedTemplate === template.id}
-                on:click={() => (selectedTemplate = template.id)}
-              >
-                <span class="template-name">{template.name}</span>
-                <span class="template-desc">{template.description}</span>
-              </button>
-            {/each}
-          </div>
+          {#if resumeTemplates.length > 0}
+            <div class="template-type-label">Resume</div>
+            <div class="template-grid">
+              {#each resumeTemplates as template (template.id)}
+                <button
+                  class="template-card"
+                  class:selected={selectedTemplateId === template.id}
+                  on:click={() => (selectedTemplateId = template.id)}
+                >
+                  <span class="template-name">{template.name}</span>
+                  <span class="template-desc">{template.description}</span>
+                  {#if template.is_builtin}
+                    <span class="template-badge">Built-in</span>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
+          {#if coverLetterTemplates.length > 0}
+            <div class="template-type-label" style="margin-top: 12px">
+              Cover Letter
+            </div>
+            <div class="template-grid">
+              {#each coverLetterTemplates as template (template.id)}
+                <button
+                  class="template-card"
+                  class:selected={selectedTemplateId === template.id}
+                  on:click={() => (selectedTemplateId = template.id)}
+                >
+                  <span class="template-name">{template.name}</span>
+                  <span class="template-desc">{template.description}</span>
+                  {#if template.is_builtin}
+                    <span class="template-badge">Built-in</span>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
         </section>
 
-        <!-- Lens Pre-fill -->
-        {#if lenses.length > 0}
+        <!-- Lens Pre-fill (resume only) -->
+        {#if !isCoverLetter && lenses.length > 0}
           <section class="selection-section">
             <h3 class="section-title">Load from Lens</h3>
             <div class="lens-select-row">
@@ -393,6 +511,8 @@
           </section>
         {/if}
 
+        <!-- Resume content sections (hidden for cover letters) -->
+        {#if !isCoverLetter}
         <!-- Summary Selection -->
         {#if summaries.length > 0}
           <section class="selection-section">
@@ -702,8 +822,19 @@
             </div>
           </section>
         {/if}
-      </div>
+        {/if}
+        <!-- End resume content sections -->
 
+        {#if isCoverLetter}
+          <section class="selection-section">
+            <h3 class="section-title">Cover Letter</h3>
+            <p class="cover-letter-hint">
+              Click "Generate PDF" to fill in any variable placeholders and
+              guided prompts, then generate the cover letter.
+            </p>
+          </section>
+        {/if}
+      </div>
       <!-- Right: Export History -->
       <div class="history-panel">
         <h3 class="section-title">Export History</h3>
@@ -731,6 +862,16 @@
     </div>
   {/if}
 </div>
+
+{#if showPromptDialog}
+  <PromptDialog
+    variables={promptVariables}
+    prompts={promptPrompts}
+    prefilled={promptPrefilled}
+    on:submit={handlePromptSubmit}
+    on:cancel={handlePromptCancel}
+  />
+{/if}
 
 <style>
   .export-page {
@@ -1205,5 +1346,27 @@
     font-size: 0.8rem;
     color: #e0a060;
     margin-bottom: 8px;
+  }
+
+  .template-type-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #7a8a9a;
+    margin-bottom: 6px;
+  }
+
+  .template-badge {
+    font-size: 0.7rem;
+    color: #4a8af4;
+    font-weight: 600;
+  }
+
+  .cover-letter-hint {
+    font-size: 0.85rem;
+    color: #7a8a9a;
+    line-height: 1.5;
+    margin: 0;
   }
 </style>

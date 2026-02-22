@@ -231,3 +231,24 @@ type TemplateDetail struct {
 	DocumentTemplate
 	Elements []TemplateElement `json:"elements"`
 }
+
+// TemplateVariable represents a variable placeholder found in a
+// cover letter template (e.g., {{company_name}}).
+type TemplateVariable struct {
+	Name   string `json:"name"`
+	Source string `json:"source"` // element_type where the variable was found
+}
+
+// GuidedPrompt represents a prompt placeholder found in a cover
+// letter template (e.g., {{prompt: Why this role?}}).
+type GuidedPrompt struct {
+	PromptText string `json:"prompt_text"`
+	Source     string `json:"source"` // element_type where the prompt was found
+}
+
+// TemplateVariables holds all variables and guided prompts
+// parsed from a cover letter template.
+type TemplateVariables struct {
+	Variables []TemplateVariable `json:"variables"`
+	Prompts   []GuidedPrompt     `json:"prompts"`
+}

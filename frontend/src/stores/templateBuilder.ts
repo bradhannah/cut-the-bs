@@ -36,11 +36,52 @@ export const currentTemplate = writable<DocumentTemplate | null>(null);
 
 // --- Helpers ---
 
+// --- Save Status ---
+
+export type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+/** Current save status for the auto-save indicator. */
+export const saveStatus = writable<SaveStatus>("idle");
+
+let saveStatusTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Mark save as in-progress. Call before an API operation.
+ */
+export function markSaving(): void {
+  if (saveStatusTimer) clearTimeout(saveStatusTimer);
+  saveStatus.set("saving");
+}
+
+/**
+ * Mark save as completed. Shows "saved" briefly then returns to idle.
+ */
+export function markSaved(): void {
+  if (saveStatusTimer) clearTimeout(saveStatusTimer);
+  saveStatus.set("saved");
+  saveStatusTimer = setTimeout(() => {
+    saveStatus.set("idle");
+  }, 2000);
+}
+
+/**
+ * Mark save as failed.
+ */
+export function markSaveError(): void {
+  if (saveStatusTimer) clearTimeout(saveStatusTimer);
+  saveStatus.set("error");
+  saveStatusTimer = setTimeout(() => {
+    saveStatus.set("idle");
+  }, 4000);
+}
+
 /** Reset all builder stores to their initial state. */
 export function resetBuilderStores(): void {
   canvasElements.set([]);
   selectedElementId.set(null);
   currentTemplate.set(null);
+  saveStatus.set("idle");
+  if (saveStatusTimer) clearTimeout(saveStatusTimer);
 }
 
 /**

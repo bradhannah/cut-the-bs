@@ -86,11 +86,26 @@ func (s *ResumeService) GetExport(
 }
 
 // PreviewExport generates a PDF without creating an export record.
-// Returns the file path of the generated PDF.
+// Returns the file path of the generated PDF. Supports both resume
+// and cover letter templates.
 func (s *ResumeService) PreviewExport(
 	ctx context.Context,
 	req domain.ExportRequest,
 ) (string, error) {
+	if req.TemplateID == 0 {
+		return "", fmt.Errorf("template ID is required")
+	}
+
+	// Load the template to detect its type.
+	tmpl, err := s.store.GetDocumentTemplate(ctx, req.TemplateID)
+	if err != nil {
+		return "", fmt.Errorf("get template: %w", err)
+	}
+
+	if tmpl.TemplateType == domain.TemplateTypeCoverLetter {
+		return s.createCoverLetterExport(ctx, req, tmpl)
+	}
+
 	if err := validateExportRequest(req); err != nil {
 		return "", err
 	}
@@ -104,23 +119,34 @@ func (s *ResumeService) PreviewExport(
 }
 
 // CreateExport generates a PDF, creates an export record, and
-// snapshots the content selections.
+// snapshots the content selections. Detects the template type
+// and routes to either RenderResume or RenderCoverLetter.
 func (s *ResumeService) CreateExport(
 	ctx context.Context,
 	req domain.ExportRequest,
 ) (domain.ResumeExport, error) {
-	if err := validateExportRequest(req); err != nil {
-		return domain.ResumeExport{}, err
+	if req.TemplateID == 0 {
+		return domain.ResumeExport{}, fmt.Errorf("template ID is required")
 	}
 
-	renderReq, err := s.assembleRenderRequest(ctx, req)
+	// Load the template to detect its type.
+	tmpl, err := s.store.GetDocumentTemplate(ctx, req.TemplateID)
 	if err != nil {
-		return domain.ResumeExport{}, err
+		return domain.ResumeExport{}, fmt.Errorf("get template: %w", err)
 	}
 
-	filePath, err := s.renderer.RenderResume(ctx, renderReq)
+	var filePath string
+
+	if tmpl.TemplateType == domain.TemplateTypeCoverLetter {
+		filePath, err = s.createCoverLetterExport(ctx, req, tmpl)
+	} else {
+		if err := validateExportRequest(req); err != nil {
+			return domain.ResumeExport{}, err
+		}
+		filePath, err = s.createResumeExport(ctx, req, tmpl)
+	}
 	if err != nil {
-		return domain.ResumeExport{}, fmt.Errorf("render resume: %w", err)
+		return domain.ResumeExport{}, err
 	}
 
 	// For the historical export record, snapshot the first summary ID
@@ -129,12 +155,6 @@ func (s *ResumeService) CreateExport(
 	if len(req.SummaryIDs) > 0 {
 		sid := req.SummaryIDs[0]
 		snapshotSummaryID = &sid
-	}
-
-	// Load the template to get its name for the historical export record.
-	tmpl, err := s.store.GetDocumentTemplate(ctx, req.TemplateID)
-	if err != nil {
-		return domain.ResumeExport{}, fmt.Errorf("get template: %w", err)
 	}
 
 	templateRefID := req.TemplateID
@@ -154,6 +174,57 @@ func (s *ResumeService) CreateExport(
 	}
 
 	return export, nil
+}
+
+// createResumeExport assembles and renders a resume PDF.
+func (s *ResumeService) createResumeExport(
+	ctx context.Context,
+	req domain.ExportRequest,
+	tmpl domain.TemplateDetail,
+) (string, error) {
+	renderReq, err := s.assembleRenderRequest(ctx, req)
+	if err != nil {
+		return "", err
+	}
+
+	filePath, err := s.renderer.RenderResume(ctx, renderReq)
+	if err != nil {
+		return "", fmt.Errorf("render resume: %w", err)
+	}
+
+	return filePath, nil
+}
+
+// createCoverLetterExport assembles and renders a cover letter PDF.
+func (s *ResumeService) createCoverLetterExport(
+	ctx context.Context,
+	req domain.ExportRequest,
+	tmpl domain.TemplateDetail,
+) (string, error) {
+	profile, err := s.store.GetProfile(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get profile: %w", err)
+	}
+
+	links, err := s.store.ListProfileLinks(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list profile links: %w", err)
+	}
+
+	clReq := domain.RenderCoverLetterRequest{
+		Template:        &tmpl,
+		OutputDir:       s.outputDir,
+		Profile:         profile,
+		Links:           links,
+		SubstitutionMap: req.SubstitutionMap,
+	}
+
+	filePath, err := s.renderer.RenderCoverLetter(ctx, clReq)
+	if err != nil {
+		return "", fmt.Errorf("render cover letter: %w", err)
+	}
+
+	return filePath, nil
 }
 
 // validateExportRequest checks that the export request has at least
