@@ -175,39 +175,38 @@
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <div class="canvas" on:click|self={handleCanvasClick}>
   {#if dndItems.length === 0}
-    <div class="canvas-empty">
+    <div class="canvas-empty-overlay">
       <p>Drag elements from the palette to start building your template.</p>
     </div>
-  {:else}
-    <div
-      class="canvas-elements"
-      use:dndzone={{
-        items: dndItems,
-        type: "template-element",
-        dropTargetStyle: { outline: "2px dashed #4a8af4", outlineOffset: "-2px" },
-        centreDraggedOnCursor: false,
-      }}
-      on:consider={handleConsider}
-      on:finalize={handleFinalize}
-    >
-      {#each dndItems as item (item.id)}
-        {#if typeof item.id === "number" && getElement(item.id)}
-          <ElementBlock
-            element={getElement(item.id)}
-            children={loopElementTypes.has(getElement(item.id).element_type) ? childrenOf(item.id) : []}
-            selected={$selectedElementId === item.id}
-            on:select={handleSelectElement}
-            on:delete={handleDeleteElement}
-          />
-        {:else}
-          <!-- Placeholder for items being dragged in from palette -->
-          <div class="canvas-placeholder-block">
-            <span class="placeholder-label">{item.element_type || item.id}</span>
-          </div>
-        {/if}
-      {/each}
-    </div>
   {/if}
+  <div
+    class="canvas-elements"
+    use:dndzone={{
+      items: dndItems,
+      type: "template-element",
+      dropTargetStyle: { outline: "2px dashed #4a8af4", outlineOffset: "-2px" },
+      centreDraggedOnCursor: false,
+    }}
+    on:consider={handleConsider}
+    on:finalize={handleFinalize}
+  >
+    {#each dndItems as item (item.id)}
+      {#if typeof item.id === "number" && getElement(item.id)}
+        <ElementBlock
+          element={getElement(item.id)}
+          children={loopElementTypes.has(getElement(item.id).element_type) ? childrenOf(item.id) : []}
+          selected={$selectedElementId === item.id}
+          on:select={handleSelectElement}
+          on:delete={handleDeleteElement}
+        />
+      {:else}
+        <!-- Placeholder for items being dragged in from palette -->
+        <div class="canvas-placeholder-block">
+          <span class="placeholder-label">{item.element_type || item.id}</span>
+        </div>
+      {/if}
+    {/each}
+  </div>
 </div>
 
 <style>
@@ -215,19 +214,23 @@
     height: 100%;
     padding: 16px;
     overflow-y: auto;
+    position: relative;
   }
 
-  .canvas-empty {
+  .canvas-empty-overlay {
+    position: absolute;
+    inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 100%;
-    min-height: 300px;
+    pointer-events: none;
+    z-index: 1;
     border: 2px dashed #2a3a4a;
     border-radius: 8px;
+    margin: 16px;
   }
 
-  .canvas-empty p {
+  .canvas-empty-overlay p {
     color: #7a8a9a;
     font-size: 0.9rem;
     text-align: center;
@@ -238,7 +241,7 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    min-height: 200px;
+    min-height: 100%;
   }
 
   .canvas-placeholder-block {

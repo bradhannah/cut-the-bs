@@ -3,8 +3,8 @@
   // Draggable element types organized by category. Uses svelte-dnd-action
   // with copy behavior so palette items are never consumed.
   import { dndzone, SHADOW_ITEM_MARKER_PROPERTY_NAME } from "svelte-dnd-action";
-  import { currentTemplate } from "../../stores/templateBuilder";
-  import { elementLabels, elementIcons } from "./elementTypes";
+  import { currentTemplate, canvasElements } from "../../stores/templateBuilder";
+  import { elementLabels, elementIcons, repeatableElementTypes } from "./elementTypes";
 
   // Element type metadata for display in the palette.
   interface PaletteItem {
@@ -29,7 +29,8 @@
     };
   }
 
-  const resumeCategories: PaletteCategory[] = [
+  // Original (immutable) category definitions — used to restore items after drag.
+  const resumeCategoryDefs: PaletteCategory[] = [
     {
       name: "Data",
       items: [
@@ -59,7 +60,7 @@
     },
   ];
 
-  const coverLetterCategories: PaletteCategory[] = [
+  const coverLetterCategoryDefs: PaletteCategory[] = [
     {
       name: "Data",
       items: [
@@ -82,23 +83,53 @@
     },
   ];
 
-  $: categories =
-    $currentTemplate?.template_type === "cover_letter"
-      ? coverLetterCategories
-      : resumeCategories;
+  // Deep-clone category defs so svelte-dnd-action can mutate items arrays.
+  function cloneCategories(defs: PaletteCategory[]): PaletteCategory[] {
+    return defs.map((cat) => ({ ...cat, items: cat.items.map((it) => ({ ...it })) }));
+  }
+
+  // Mutable categories array that svelte-dnd-action will update via events.
+  let categories: PaletteCategory[] = [];
+
+  // Re-derive from template type changes.
+  $: {
+    const defs =
+      $currentTemplate?.template_type === "cover_letter"
+        ? coverLetterCategoryDefs
+        : resumeCategoryDefs;
+    categories = cloneCategories(defs);
+  }
+
+  // Compute the set of element types already present on the canvas.
+  $: usedElementTypes = new Set(
+    $canvasElements.map((el) => el.element_type)
+  );
+
+  // Check if an element type should appear subdued (already on canvas and not repeatable).
+  function isUsed(elementType: string): boolean {
+    return !repeatableElementTypes.has(elementType) && usedElementTypes.has(elementType);
+  }
 
   function handleDndConsider(
-    _catIdx: number,
-    _e: CustomEvent<{ items: PaletteItem[] }>
+    catIdx: number,
+    e: CustomEvent<{ items: PaletteItem[] }>
   ): void {
-    // Palette is the source — we don't mutate it on consider.
+    // svelte-dnd-action requires the items array to be updated during consider.
+    categories[catIdx].items = e.detail.items;
+    categories = categories; // trigger Svelte reactivity
   }
 
   function handleDndFinalize(
-    _catIdx: number,
+    catIdx: number,
     _e: CustomEvent<{ items: PaletteItem[] }>
   ): void {
-    // Palette is read-only; finalize is a no-op.
+    // Restore original items for this category (copy-from-source pattern).
+    const defs =
+      $currentTemplate?.template_type === "cover_letter"
+        ? coverLetterCategoryDefs
+        : resumeCategoryDefs;
+    categories[catIdx].items = defs[catIdx].items.map((it) => ({ ...it }));
+    categories = categories; // trigger Svelte reactivity
   }
 
   function transformDraggedElement(el: HTMLElement): void {
@@ -111,7 +142,7 @@
     <h3>Elements</h3>
   </div>
 
-  {#each categories as category (category.name)}
+  {#each categories as category, catIdx (category.name)}
     <div class="palette-category">
       <div class="category-label">{category.name}</div>
       <div
@@ -125,16 +156,20 @@
           centreDraggedOnCursor: true,
           transformDraggedElement,
         }}
-        on:consider={(e) => handleDndConsider(0, e)}
-        on:finalize={(e) => handleDndFinalize(0, e)}
+        on:consider={(e) => handleDndConsider(catIdx, e)}
+        on:finalize={(e) => handleDndFinalize(catIdx, e)}
       >
         {#each category.items as item (item.id)}
           <div
             class="palette-item"
             class:is-shadow={item[SHADOW_ITEM_MARKER_PROPERTY_NAME]}
+            class:used={isUsed(item.element_type)}
           >
             <span class="item-icon">{item.icon}</span>
             <span class="item-label">{item.label}</span>
+            {#if isUsed(item.element_type)}
+              <span class="used-badge" title="Already on canvas">&#10003;</span>
+            {/if}
           </div>
         {/each}
       </div>
@@ -199,6 +234,22 @@
 
   .palette-item.is-shadow {
     opacity: 0.4;
+  }
+
+  .palette-item.used {
+    opacity: 0.4;
+    cursor: grab;
+  }
+
+  .palette-item.used:hover {
+    opacity: 0.55;
+  }
+
+  .used-badge {
+    margin-left: auto;
+    font-size: 0.65rem;
+    color: #5a7a5a;
+    flex-shrink: 0;
   }
 
   .item-icon {

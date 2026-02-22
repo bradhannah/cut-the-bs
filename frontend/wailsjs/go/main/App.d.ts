@@ -32,6 +32,8 @@ export function CreateCoverLetter(arg1:domain.CoverLetterInput):Promise<domain.C
 
 export function CreateDescriptor(arg1:string):Promise<domain.RoleDescriptor>;
 
+export function CreateDocumentTemplate(arg1:domain.DocumentTemplateInput):Promise<domain.DocumentTemplate>;
+
 export function CreateExport(arg1:domain.ExportRequest):Promise<domain.ResumeExport>;
 
 export function CreateLens(arg1:domain.LensInput):Promise<domain.Lens>;
@@ -43,6 +45,8 @@ export function CreateSkill(arg1:domain.SkillInput):Promise<domain.Skill>;
 export function CreateSkillCategory(arg1:string):Promise<domain.SkillCategory>;
 
 export function CreateSummary(arg1:domain.SummaryInput):Promise<domain.ProfessionalSummary>;
+
+export function CreateTemplateElement(arg1:number,arg2:domain.TemplateElementInput):Promise<domain.TemplateElement>;
 
 export function CreateWorkHistory(arg1:domain.WorkHistoryInput):Promise<domain.WorkHistoryEntry>;
 
@@ -60,6 +64,8 @@ export function DeleteCoverLetter(arg1:number):Promise<void>;
 
 export function DeleteDescriptor(arg1:number):Promise<void>;
 
+export function DeleteDocumentTemplate(arg1:number):Promise<void>;
+
 export function DeleteLens(arg1:number):Promise<void>;
 
 export function DeleteProfileLink(arg1:number):Promise<void>;
@@ -70,11 +76,17 @@ export function DeleteSkillCategory(arg1:number):Promise<void>;
 
 export function DeleteSummary(arg1:number):Promise<void>;
 
+export function DeleteTemplateElement(arg1:number):Promise<void>;
+
 export function DeleteWorkHistory(arg1:number):Promise<void>;
+
+export function DuplicateDocumentTemplate(arg1:number,arg2:string):Promise<domain.DocumentTemplate>;
 
 export function ExportAllData(arg1:string):Promise<string>;
 
 export function ExportCoverLetter(arg1:number):Promise<string>;
+
+export function ExportTemplate(arg1:number,arg2:string):Promise<void>;
 
 export function GetApplicationHistory(arg1:number):Promise<Array<domain.StatusChange>>;
 
@@ -85,6 +97,8 @@ export function GetBackupSettings():Promise<domain.BackupSettings>;
 export function GetCompetenceLevels():Promise<Array<domain.CompetenceLevel>>;
 
 export function GetDataDirectory():Promise<string>;
+
+export function GetDocumentTemplate(arg1:number):Promise<domain.TemplateDetail>;
 
 export function GetFitIndicators():Promise<Array<string>>;
 
@@ -106,6 +120,8 @@ export function ImportCSV(arg1:string,arg2:string):Promise<domain.ImportResult>;
 
 export function ImportJSON(arg1:string,arg2:string):Promise<domain.ImportResult>;
 
+export function ImportTemplate(arg1:string):Promise<domain.DocumentTemplate>;
+
 export function ListAcademicCredentials():Promise<Array<domain.AcademicCredential>>;
 
 export function ListApplications():Promise<Array<domain.JobApplication>>;
@@ -117,6 +133,8 @@ export function ListCoreExpertise():Promise<Array<domain.CoreExpertise>>;
 export function ListCoverLetters():Promise<Array<domain.CoverLetter>>;
 
 export function ListDescriptors():Promise<Array<domain.RoleDescriptor>>;
+
+export function ListDocumentTemplates():Promise<Array<domain.DocumentTemplate>>;
 
 export function ListExports():Promise<Array<domain.ResumeExport>>;
 
@@ -142,7 +160,13 @@ export function OpenDataDirectory():Promise<void>;
 
 export function OpenExportFile(arg1:number):Promise<void>;
 
+export function OpenFile(arg1:string):Promise<void>;
+
+export function ParseTemplateVariables(arg1:number):Promise<domain.TemplateVariables>;
+
 export function PreviewExport(arg1:domain.ExportRequest):Promise<string>;
+
+export function PreviewTemplate(arg1:number):Promise<string>;
 
 export function RenameSkillCategory(arg1:number,arg2:string):Promise<domain.SkillCategory>;
 
@@ -159,6 +183,8 @@ export function ReorderDescriptors(arg1:Array<number>):Promise<void>;
 export function ReorderProfileLinks(arg1:Array<number>):Promise<void>;
 
 export function ReorderSkillCategories(arg1:Array<number>):Promise<void>;
+
+export function ReorderTemplateElements(arg1:number,arg2:any,arg3:Array<number>):Promise<void>;
 
 export function ReorderWorkHistory(arg1:Array<number>):Promise<void>;
 
@@ -210,6 +236,8 @@ export function UpdateCoverLetter(arg1:number,arg2:domain.CoverLetterInput):Prom
 
 export function UpdateDescriptor(arg1:number,arg2:string):Promise<domain.RoleDescriptor>;
 
+export function UpdateDocumentTemplate(arg1:number,arg2:domain.DocumentTemplateInput):Promise<domain.DocumentTemplate>;
+
 export function UpdateLens(arg1:number,arg2:domain.LensInput):Promise<domain.Lens>;
 
 export function UpdateProfile(arg1:domain.UserProfile):Promise<domain.UserProfile>;
@@ -219,5 +247,7 @@ export function UpdateProfileLink(arg1:number,arg2:domain.ProfileLinkInput):Prom
 export function UpdateSkill(arg1:number,arg2:domain.SkillInput):Promise<domain.Skill>;
 
 export function UpdateSummary(arg1:number,arg2:domain.SummaryInput):Promise<domain.ProfessionalSummary>;
+
+export function UpdateTemplateElement(arg1:number,arg2:domain.TemplateElementInput):Promise<domain.TemplateElement>;
 
 export function UpdateWorkHistory(arg1:number,arg2:domain.WorkHistoryInput):Promise<domain.WorkHistoryEntry>;

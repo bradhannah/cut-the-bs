@@ -216,6 +216,14 @@ export const elementIcons: Record<string, string> = {
   recipient_address: "\u{1F4EC}",
 };
 
+// Formatting element types that can be used multiple times on the canvas.
+export const repeatableElementTypes = new Set([
+  "section_heading",
+  "horizontal_rule",
+  "spacer",
+  "static_text",
+]);
+
 // Loop container types.
 export const loopElementTypes = new Set([
   "work_history_loop",

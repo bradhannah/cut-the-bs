@@ -1476,6 +1476,10 @@
   <div class="properties-body">
     <p class="section-title">Page Margins</p>
 
+    {#if $currentTemplate.is_builtin}
+      <p class="builtin-notice">Built-in templates cannot be edited. Duplicate this template to customize margins.</p>
+    {/if}
+
     <div class="prop-group">
       <label class="prop-label" for="margin-top">
         Top
@@ -1489,6 +1493,7 @@
         max="288"
         step="1"
         value={$currentTemplate.margin_top}
+        disabled={$currentTemplate.is_builtin}
         on:input={(e) => updateMargin("margin_top", parseFloat(e.currentTarget.value))}
       />
     </div>
@@ -1506,6 +1511,7 @@
         max="288"
         step="1"
         value={$currentTemplate.margin_bottom}
+        disabled={$currentTemplate.is_builtin}
         on:input={(e) => updateMargin("margin_bottom", parseFloat(e.currentTarget.value))}
       />
     </div>
@@ -1523,6 +1529,7 @@
         max="288"
         step="1"
         value={$currentTemplate.margin_left}
+        disabled={$currentTemplate.is_builtin}
         on:input={(e) => updateMargin("margin_left", parseFloat(e.currentTarget.value))}
       />
     </div>
@@ -1540,6 +1547,7 @@
         max="288"
         step="1"
         value={$currentTemplate.margin_right}
+        disabled={$currentTemplate.is_builtin}
         on:input={(e) => updateMargin("margin_right", parseFloat(e.currentTarget.value))}
       />
     </div>
@@ -1714,5 +1722,16 @@
     margin: 0;
     max-height: 300px;
     overflow-y: auto;
+  }
+
+  .builtin-notice {
+    font-size: 0.75rem;
+    color: #7a8a9a;
+    background-color: #1e2d3d;
+    border: 1px solid #2a3a4a;
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin: 8px 0 4px;
+    line-height: 1.4;
   }
 </style>
