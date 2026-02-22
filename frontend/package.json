@@ -35,5 +35,8 @@
   "dependencies": {
     "svelte-dnd-action": "^0.9.69",
     "svelte-spa-router": "^4.0.1"
+  },
+  "patchedDependencies": {
+    "svelte-dnd-action@0.9.69": "patches/svelte-dnd-action@0.9.69.patch"
   }
 }

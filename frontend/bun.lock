@@ -29,6 +29,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "svelte-dnd-action@0.9.69": "patches/svelte-dnd-action@0.9.69.patch",
+  },
   "packages": {
     "@esbuild/android-arm": ["@esbuild/android-arm@0.15.18", "", { "os": "android", "cpu": "arm" }, "sha512-5GT+kcs2WVGjVs7+boataCkO5Fg0y4kCjzkB5bAip7H4jfnOS3dA6KPiww9W1OEKTKeAcUVhdZGvgI65OXmUnw=="],
 
