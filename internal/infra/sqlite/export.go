@@ -15,12 +15,13 @@ func (s *Store) CreateExport(
 	export domain.ResumeExport,
 ) (domain.ResumeExport, error) {
 	query := `
-		INSERT INTO resume_export (template_id, file_path, summary_id, lens_id)
-		VALUES (?, ?, ?, ?)
+		INSERT INTO resume_export (template_id, template_ref_id, file_path, summary_id, lens_id)
+		VALUES (?, ?, ?, ?, ?)
 	`
 
 	result, err := s.db.ExecContext(ctx, query,
 		export.TemplateID,
+		export.TemplateRefID,
 		export.FilePath,
 		export.SummaryID,
 		export.LensID,
@@ -43,7 +44,7 @@ func (s *Store) GetExport(
 	id int64,
 ) (domain.ResumeExport, error) {
 	query := `
-		SELECT id, template_id, file_path, summary_id, lens_id, generated_at
+		SELECT id, template_id, template_ref_id, file_path, summary_id, lens_id, generated_at
 		FROM resume_export
 		WHERE id = ?
 	`
@@ -51,10 +52,12 @@ func (s *Store) GetExport(
 	var e domain.ResumeExport
 	var summaryID sql.NullInt64
 	var lensID sql.NullInt64
+	var templateRefID sql.NullInt64
 
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&e.ID,
 		&e.TemplateID,
+		&templateRefID,
 		&e.FilePath,
 		&summaryID,
 		&lensID,
@@ -73,6 +76,9 @@ func (s *Store) GetExport(
 	if lensID.Valid {
 		e.LensID = &lensID.Int64
 	}
+	if templateRefID.Valid {
+		e.TemplateRefID = &templateRefID.Int64
+	}
 
 	return e, nil
 }
@@ -83,7 +89,7 @@ func (s *Store) ListExports(
 	ctx context.Context,
 ) ([]domain.ResumeExport, error) {
 	query := `
-		SELECT id, template_id, file_path, summary_id, lens_id, generated_at
+		SELECT id, template_id, template_ref_id, file_path, summary_id, lens_id, generated_at
 		FROM resume_export
 		ORDER BY id DESC
 	`
@@ -99,10 +105,12 @@ func (s *Store) ListExports(
 		var e domain.ResumeExport
 		var summaryID sql.NullInt64
 		var lensID sql.NullInt64
+		var templateRefID sql.NullInt64
 
 		if err := rows.Scan(
 			&e.ID,
 			&e.TemplateID,
+			&templateRefID,
 			&e.FilePath,
 			&summaryID,
 			&lensID,
@@ -116,6 +124,9 @@ func (s *Store) ListExports(
 		}
 		if lensID.Valid {
 			e.LensID = &lensID.Int64
+		}
+		if templateRefID.Valid {
+			e.TemplateRefID = &templateRefID.Int64
 		}
 
 		exports = append(exports, e)
@@ -141,6 +152,85 @@ func (s *Store) CreateExportSelections(
 		return fmt.Errorf("create export selections: begin tx: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
+
+	if err := insertExportSelectionsTx(ctx, tx, exportID, req); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// OverwriteExport updates an existing export record and replaces its
+// saved selection snapshot.
+func (s *Store) OverwriteExport(
+	ctx context.Context,
+	exportID int64,
+	export domain.ResumeExport,
+	req domain.ExportRequest,
+) (domain.ResumeExport, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.ResumeExport{}, fmt.Errorf("overwrite export: begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	result, err := tx.ExecContext(ctx,
+		`UPDATE resume_export
+		 SET template_id = ?,
+		     template_ref_id = ?,
+		     file_path = ?,
+		     summary_id = ?,
+		     lens_id = ?,
+		     generated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+		 WHERE id = ?`,
+		export.TemplateID,
+		export.TemplateRefID,
+		export.FilePath,
+		export.SummaryID,
+		export.LensID,
+		exportID,
+	)
+	if err != nil {
+		return domain.ResumeExport{}, fmt.Errorf("overwrite export: update: %w", err)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return domain.ResumeExport{}, fmt.Errorf("overwrite export: export %d not found", exportID)
+	}
+
+	deleteStatements := []string{
+		`DELETE FROM export_work_history_selection WHERE export_id = ?`,
+		`DELETE FROM export_bullet_selection WHERE export_id = ?`,
+		`DELETE FROM export_skill_selection WHERE export_id = ?`,
+		`DELETE FROM export_academic_selection WHERE export_id = ?`,
+		`DELETE FROM export_cert_selection WHERE export_id = ?`,
+		`DELETE FROM export_descriptor_selection WHERE export_id = ?`,
+	}
+
+	for _, stmt := range deleteStatements {
+		if _, err := tx.ExecContext(ctx, stmt, exportID); err != nil {
+			return domain.ResumeExport{}, fmt.Errorf("overwrite export: clear selections: %w", err)
+		}
+	}
+
+	if err := insertExportSelectionsTx(ctx, tx, exportID, req); err != nil {
+		return domain.ResumeExport{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return domain.ResumeExport{}, fmt.Errorf("overwrite export: commit: %w", err)
+	}
+
+	return s.GetExport(ctx, exportID)
+}
+
+func insertExportSelectionsTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	exportID int64,
+	req domain.ExportRequest,
+) error {
 
 	// Work history entries.
 	for _, whID := range req.WorkHistoryIDs {
@@ -212,7 +302,7 @@ func (s *Store) CreateExportSelections(
 		}
 	}
 
-	return tx.Commit()
+	return nil
 }
 
 // GetExportWorkHistoryIDs returns the work history entry IDs

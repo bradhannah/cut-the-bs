@@ -45,9 +45,10 @@ func extractPDFText(t *testing.T, pdfPath string) string {
 // covering every section, for ATS validation testing.
 func fullATSTestData(outputDir string) domain.RenderResumeRequest {
 	summaryID := int64(1)
+	profTmpl := pdf.ProfessionalTemplate()
 	return domain.RenderResumeRequest{
-		TemplateID: "professional",
-		OutputDir:  outputDir,
+		Template:  &profTmpl,
+		OutputDir: outputDir,
 		Profile: domain.UserProfile{
 			ID:       1,
 			FullName: "Jane Smith",
@@ -348,22 +349,25 @@ func TestATS_ReadingOrder(t *testing.T) {
 func TestATS_BothTemplatesProduceValidPDF(t *testing.T) {
 	renderer := pdf.NewRenderer()
 
-	templates := []string{"professional", "modern"}
-	for _, tmpl := range templates {
-		t.Run(tmpl, func(t *testing.T) {
+	templates := map[string]domain.TemplateDetail{
+		"professional": pdf.ProfessionalTemplate(),
+		"modern":       pdf.ModernTemplate(),
+	}
+	for name, tmpl := range templates {
+		t.Run(name, func(t *testing.T) {
 			outputDir := t.TempDir()
 			req := fullATSTestData(outputDir)
-			req.TemplateID = tmpl
+			req.Template = &tmpl
 
 			path, err := renderer.RenderResume(context.Background(), req)
 			require.NoError(t, err)
 
 			text := extractPDFText(t, path)
-			assert.NotEmpty(t, text, "template %q should produce extractable text", tmpl)
+			assert.NotEmpty(t, text, "template %q should produce extractable text", name)
 			assert.Contains(t, text, "Jane Smith",
-				"template %q should contain profile name", tmpl)
+				"template %q should contain profile name", name)
 			assert.Contains(t, text, "Acme Corp",
-				"template %q should contain work history", tmpl)
+				"template %q should contain work history", name)
 		})
 	}
 }
@@ -386,4 +390,130 @@ func TestATS_LinksPresent(t *testing.T) {
 	assert.True(t,
 		strings.Contains(text, "GitHub") || strings.Contains(text, "github.com"),
 		"GitHub link (label or URL) should appear in PDF text")
+}
+
+func TestATS_CustomTemplate_TextExtraction(t *testing.T) {
+	// Builds a user-created custom template from scratch (not a built-in)
+	// and verifies that the generated PDF passes ATS compatibility checks:
+	// all text is extractable, no mid-word spaces, correct reading order.
+	renderer := pdf.NewRenderer()
+	outputDir := t.TempDir()
+
+	customTmpl := domain.TemplateDetail{
+		DocumentTemplate: domain.DocumentTemplate{
+			ID:           500,
+			Name:         "Custom ATS Test",
+			TemplateType: domain.TemplateTypeResume,
+			MarginTop:    48.0,
+			MarginBottom: 48.0,
+			MarginLeft:   60.0,
+			MarginRight:  60.0,
+		},
+		Elements: []domain.TemplateElement{
+			{ID: 1, TemplateID: 500, ElementType: domain.ElementProfileHeader, SortOrder: 0,
+				Config: `{"name_font_size":16.0,"detail_font_size":9.0,"alignment":"left","link_separator":" | ","show_links":true,"show_links_inline":true,"space_after":8.0}`},
+			{ID: 2, TemplateID: 500, ElementType: domain.ElementRoleDescriptors, SortOrder: 1,
+				Config: `{"font_size":9.0,"font_style":"italic","alignment":"left","separator":" / ","space_after":6.0}`},
+			{ID: 3, TemplateID: 500, ElementType: domain.ElementHorizontalRule, SortOrder: 2,
+				Config: `{"weight":0.5,"space_before":4.0,"space_after":6.0}`},
+			{ID: 4, TemplateID: 500, ElementType: domain.ElementSectionHeading, SortOrder: 3,
+				Config: `{"text":"Summary","font_size":11.0,"font_style":"bold","uppercase":false,"underline":false,"space_before":6.0,"space_after":4.0,"data_binding":"summaries"}`},
+			{ID: 5, TemplateID: 500, ElementType: domain.ElementProfSummary, SortOrder: 4,
+				Config: `{"font_size":9.0,"bullet_char":"\u2022","space_before":0.0,"space_after":0.0}`},
+			{ID: 6, TemplateID: 500, ElementType: domain.ElementSectionHeading, SortOrder: 5,
+				Config: `{"text":"Work Experience","font_size":11.0,"font_style":"bold","uppercase":false,"underline":true,"underline_weight":0.3,"space_before":8.0,"space_after":4.0,"data_binding":"work_history"}`},
+			{ID: 7, TemplateID: 500, ElementType: domain.ElementWorkHistoryLoop, SortOrder: 6,
+				Config: `{"entry_gap":6.0,"space_before":0.0,"space_after":0.0}`},
+			// Loop children
+			{ID: 8, TemplateID: 500, ParentID: int64Ptr(7), ElementType: domain.ElementWorkTitle, SortOrder: 0,
+				Config: `{"font_size":10.0,"font_style":"bold","include_employer":true,"employer_separator":" — ","employer_font_style":"regular","space_after":2.0}`},
+			{ID: 9, TemplateID: 500, ParentID: int64Ptr(7), ElementType: domain.ElementWorkDates, SortOrder: 1,
+				Config: `{"font_size":9.0,"alignment":"right","space_after":0.0}`},
+			{ID: 10, TemplateID: 500, ParentID: int64Ptr(7), ElementType: domain.ElementWorkBullets, SortOrder: 2,
+				Config: `{"font_size":9.0,"font_style":"regular","bullet_char":"-","indent":12.0,"bullet_symb_width":8.0}`},
+			{ID: 11, TemplateID: 500, ElementType: domain.ElementSectionHeading, SortOrder: 7,
+				Config: `{"text":"Technical Skills","font_size":11.0,"font_style":"bold","uppercase":false,"underline":true,"underline_weight":0.3,"space_before":8.0,"space_after":4.0,"data_binding":"skills"}`},
+			{ID: 12, TemplateID: 500, ElementType: domain.ElementSkills, SortOrder: 8,
+				Config: `{"font_size":9.0,"group_by_category":true,"include_legacy":false,"category_font_style":"bold","skill_separator":", "}`},
+			{ID: 13, TemplateID: 500, ElementType: domain.ElementSectionHeading, SortOrder: 9,
+				Config: `{"text":"Education","font_size":11.0,"font_style":"bold","uppercase":false,"underline":true,"underline_weight":0.3,"space_before":8.0,"space_after":4.0,"data_binding":"academics"}`},
+			{ID: 14, TemplateID: 500, ElementType: domain.ElementEducationLoop, SortOrder: 10,
+				Config: `{"entry_gap":0.0,"space_before":0.0,"space_after":0.0}`},
+			{ID: 15, TemplateID: 500, ParentID: int64Ptr(14), ElementType: domain.ElementEduCredential, SortOrder: 0,
+				Config: `{"font_size":10.0,"font_style":"bold","include_field":true,"space_after":0.0}`},
+			{ID: 16, TemplateID: 500, ParentID: int64Ptr(14), ElementType: domain.ElementEduInstitution, SortOrder: 1,
+				Config: `{"font_size":9.0,"font_style":"regular","space_after":0.0}`},
+			{ID: 17, TemplateID: 500, ParentID: int64Ptr(14), ElementType: domain.ElementEduDate, SortOrder: 2,
+				Config: `{"font_size":9.0,"alignment":"right","space_after":0.0}`},
+			{ID: 18, TemplateID: 500, ElementType: domain.ElementSectionHeading, SortOrder: 11,
+				Config: `{"text":"Certifications","font_size":11.0,"font_style":"bold","uppercase":false,"underline":true,"underline_weight":0.3,"space_before":8.0,"space_after":4.0,"data_binding":"certifications"}`},
+			{ID: 19, TemplateID: 500, ElementType: domain.ElementCertsLoop, SortOrder: 12,
+				Config: `{"entry_gap":0.0,"space_before":0.0,"space_after":0.0}`},
+			{ID: 20, TemplateID: 500, ParentID: int64Ptr(19), ElementType: domain.ElementCertName, SortOrder: 0,
+				Config: `{"font_size":10.0,"font_style":"bold","space_after":0.0}`},
+			{ID: 21, TemplateID: 500, ParentID: int64Ptr(19), ElementType: domain.ElementCertDetail, SortOrder: 1,
+				Config: `{"font_size":9.0,"font_style":"regular","include_dates":true,"space_after":0.0}`},
+		},
+	}
+
+	req := fullATSTestData(outputDir)
+	req.Template = &customTmpl
+
+	path, err := renderer.RenderResume(context.Background(), req)
+	require.NoError(t, err)
+
+	text := extractPDFText(t, path)
+	require.NotEmpty(t, text, "custom template PDF should produce extractable text")
+
+	// Profile info.
+	assert.Contains(t, text, "Jane Smith", "name should be extractable")
+	assert.Contains(t, text, "jane@example.com", "email should be extractable")
+
+	// Work history.
+	assert.Contains(t, text, "Acme Corp", "employer should be extractable")
+	assert.Contains(t, text, "Senior Software Engineer", "job title should be extractable")
+	assert.Contains(t, text, "microservices", "bullet content should be extractable")
+
+	// Skills.
+	assert.Contains(t, text, "Go", "skill should be extractable")
+	assert.Contains(t, text, "PostgreSQL", "skill should be extractable")
+
+	// Education.
+	assert.Contains(t, text, "MIT", "institution should be extractable")
+	assert.Contains(t, text, "Computer Science", "field of study should be extractable")
+
+	// Certifications.
+	assert.Contains(t, text, "AWS Solutions Architect", "cert should be extractable")
+
+	// No mid-word spaces.
+	noSpaceWords := []string{
+		"microservices",
+		"architecture",
+		"containerization",
+		"PostgreSQL",
+		"Experienced",
+	}
+	for _, word := range noSpaceWords {
+		assert.Contains(t, text, word,
+			"word %q should appear without mid-word spaces in custom template", word)
+	}
+
+	// Reading order: name before summary, summary before work.
+	nameIdx := strings.Index(text, "Jane Smith")
+	summaryIdx := strings.Index(text, "Experienced software engineer")
+	workIdx := strings.Index(text, "Acme Corp")
+
+	require.NotEqual(t, -1, nameIdx, "name should be found")
+	require.NotEqual(t, -1, summaryIdx, "summary should be found")
+	require.NotEqual(t, -1, workIdx, "work history should be found")
+
+	assert.Less(t, nameIdx, summaryIdx,
+		"name should appear before summary in custom template reading order")
+	assert.Less(t, summaryIdx, workIdx,
+		"summary should appear before work history in custom template reading order")
+}
+
+// int64Ptr is a helper to create *int64 pointers for element ParentIDs.
+func int64Ptr(v int64) *int64 {
+	return &v
 }

@@ -5,6 +5,7 @@
     "": {
       "name": "frontend",
       "dependencies": {
+        "svelte-dnd-action": "^0.9.69",
         "svelte-spa-router": "^4.0.1",
       },
       "devDependencies": {
@@ -27,6 +28,9 @@
         "vite": "^3.0.7",
       },
     },
+  },
+  "patchedDependencies": {
+    "svelte-dnd-action@0.9.69": "patches/svelte-dnd-action@0.9.69.patch",
   },
   "packages": {
     "@esbuild/android-arm": ["@esbuild/android-arm@0.15.18", "", { "os": "android", "cpu": "arm" }, "sha512-5GT+kcs2WVGjVs7+boataCkO5Fg0y4kCjzkB5bAip7H4jfnOS3dA6KPiww9W1OEKTKeAcUVhdZGvgI65OXmUnw=="],
@@ -424,6 +428,8 @@
     "svelte": ["svelte@3.59.2", "", {}, "sha512-vzSyuGr3eEoAtT/A6bmajosJZIUWySzY2CzB3w2pgPvnkUjGqlDnsNnA0PMO+mMAhuyMul6C2uuZzY6ELSkzyA=="],
 
     "svelte-check": ["svelte-check@2.10.3", "", { "dependencies": { "@jridgewell/trace-mapping": "^0.3.9", "chokidar": "^3.4.1", "fast-glob": "^3.2.7", "import-fresh": "^3.2.1", "picocolors": "^1.0.0", "sade": "^1.7.4", "svelte-preprocess": "^4.0.0", "typescript": "*" }, "peerDependencies": { "svelte": "^3.24.0" }, "bin": { "svelte-check": "bin/svelte-check" } }, "sha512-Nt1aWHTOKFReBpmJ1vPug0aGysqPwJh2seM1OvICfM2oeyaA62mOiy5EvkXhltGfhCcIQcq2LoE0l1CwcWPjlw=="],
+
+    "svelte-dnd-action": ["svelte-dnd-action@0.9.69", "", { "peerDependencies": { "svelte": ">=3.23.0 || ^5.0.0-next.0" } }, "sha512-NAmSOH7htJoYraTQvr+q5whlIuVoq88vEuHr4NcFgscDRUxfWPPxgie2OoxepBCQCikrXZV4pqV86aun60wVyw=="],
 
     "svelte-eslint-parser": ["svelte-eslint-parser@1.4.1", "", { "dependencies": { "eslint-scope": "^8.2.0", "eslint-visitor-keys": "^4.0.0", "espree": "^10.0.0", "postcss": "^8.4.49", "postcss-scss": "^4.0.9", "postcss-selector-parser": "^7.0.0" }, "peerDependencies": { "svelte": "^3.37.0 || ^4.0.0 || ^5.0.0" }, "optionalPeers": ["svelte"] }, "sha512-1eqkfQ93goAhjAXxZiu1SaKI9+0/sxp4JIWQwUpsz7ybehRE5L8dNuz7Iry7K22R47p5/+s9EM+38nHV2OlgXA=="],
 

@@ -16,8 +16,8 @@ func main() {
 
 	err := wails.Run(&options.App{
 		Title:     "Cut the BS",
-		Width:     1200,
-		Height:    800,
+		Width:     1440,
+		Height:    900,
 		MinWidth:  800,
 		MinHeight: 600,
 		AssetServer: &assetserver.Options{

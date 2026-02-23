@@ -62,6 +62,10 @@ export function CreateDescriptor(arg1) {
   return window['go']['main']['App']['CreateDescriptor'](arg1);
 }
 
+export function CreateDocumentTemplate(arg1) {
+  return window['go']['main']['App']['CreateDocumentTemplate'](arg1);
+}
+
 export function CreateExport(arg1) {
   return window['go']['main']['App']['CreateExport'](arg1);
 }
@@ -84,6 +88,10 @@ export function CreateSkillCategory(arg1) {
 
 export function CreateSummary(arg1) {
   return window['go']['main']['App']['CreateSummary'](arg1);
+}
+
+export function CreateTemplateElement(arg1, arg2) {
+  return window['go']['main']['App']['CreateTemplateElement'](arg1, arg2);
 }
 
 export function CreateWorkHistory(arg1) {
@@ -118,6 +126,10 @@ export function DeleteDescriptor(arg1) {
   return window['go']['main']['App']['DeleteDescriptor'](arg1);
 }
 
+export function DeleteDocumentTemplate(arg1) {
+  return window['go']['main']['App']['DeleteDocumentTemplate'](arg1);
+}
+
 export function DeleteLens(arg1) {
   return window['go']['main']['App']['DeleteLens'](arg1);
 }
@@ -138,8 +150,16 @@ export function DeleteSummary(arg1) {
   return window['go']['main']['App']['DeleteSummary'](arg1);
 }
 
+export function DeleteTemplateElement(arg1) {
+  return window['go']['main']['App']['DeleteTemplateElement'](arg1);
+}
+
 export function DeleteWorkHistory(arg1) {
   return window['go']['main']['App']['DeleteWorkHistory'](arg1);
+}
+
+export function DuplicateDocumentTemplate(arg1, arg2) {
+  return window['go']['main']['App']['DuplicateDocumentTemplate'](arg1, arg2);
 }
 
 export function ExportAllData(arg1) {
@@ -150,8 +170,16 @@ export function ExportCoverLetter(arg1) {
   return window['go']['main']['App']['ExportCoverLetter'](arg1);
 }
 
+export function ExportTemplate(arg1, arg2) {
+  return window['go']['main']['App']['ExportTemplate'](arg1, arg2);
+}
+
 export function GetApplicationHistory(arg1) {
   return window['go']['main']['App']['GetApplicationHistory'](arg1);
+}
+
+export function GetApplicationPromptValues(arg1, arg2) {
+  return window['go']['main']['App']['GetApplicationPromptValues'](arg1, arg2);
 }
 
 export function GetApplicationStatuses() {
@@ -168,6 +196,10 @@ export function GetCompetenceLevels() {
 
 export function GetDataDirectory() {
   return window['go']['main']['App']['GetDataDirectory']();
+}
+
+export function GetDocumentTemplate(arg1) {
+  return window['go']['main']['App']['GetDocumentTemplate'](arg1);
 }
 
 export function GetFitIndicators() {
@@ -210,6 +242,10 @@ export function ImportJSON(arg1, arg2) {
   return window['go']['main']['App']['ImportJSON'](arg1, arg2);
 }
 
+export function ImportTemplate(arg1) {
+  return window['go']['main']['App']['ImportTemplate'](arg1);
+}
+
 export function ListAcademicCredentials() {
   return window['go']['main']['App']['ListAcademicCredentials']();
 }
@@ -232,6 +268,10 @@ export function ListCoverLetters() {
 
 export function ListDescriptors() {
   return window['go']['main']['App']['ListDescriptors']();
+}
+
+export function ListDocumentTemplates() {
+  return window['go']['main']['App']['ListDocumentTemplates']();
 }
 
 export function ListExports() {
@@ -282,8 +322,24 @@ export function OpenExportFile(arg1) {
   return window['go']['main']['App']['OpenExportFile'](arg1);
 }
 
+export function OpenFile(arg1) {
+  return window['go']['main']['App']['OpenFile'](arg1);
+}
+
+export function OverwriteExport(arg1, arg2) {
+  return window['go']['main']['App']['OverwriteExport'](arg1, arg2);
+}
+
+export function ParseTemplateVariables(arg1) {
+  return window['go']['main']['App']['ParseTemplateVariables'](arg1);
+}
+
 export function PreviewExport(arg1) {
   return window['go']['main']['App']['PreviewExport'](arg1);
+}
+
+export function PreviewTemplate(arg1) {
+  return window['go']['main']['App']['PreviewTemplate'](arg1);
 }
 
 export function RenameSkillCategory(arg1, arg2) {
@@ -318,8 +374,16 @@ export function ReorderSkillCategories(arg1) {
   return window['go']['main']['App']['ReorderSkillCategories'](arg1);
 }
 
+export function ReorderTemplateElements(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ReorderTemplateElements'](arg1, arg2, arg3);
+}
+
 export function ReorderWorkHistory(arg1) {
   return window['go']['main']['App']['ReorderWorkHistory'](arg1);
+}
+
+export function SaveApplicationPromptValues(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SaveApplicationPromptValues'](arg1, arg2, arg3);
 }
 
 export function SearchApplications(arg1) {
@@ -418,6 +482,10 @@ export function UpdateDescriptor(arg1, arg2) {
   return window['go']['main']['App']['UpdateDescriptor'](arg1, arg2);
 }
 
+export function UpdateDocumentTemplate(arg1, arg2) {
+  return window['go']['main']['App']['UpdateDocumentTemplate'](arg1, arg2);
+}
+
 export function UpdateLens(arg1, arg2) {
   return window['go']['main']['App']['UpdateLens'](arg1, arg2);
 }
@@ -436,6 +504,10 @@ export function UpdateSkill(arg1, arg2) {
 
 export function UpdateSummary(arg1, arg2) {
   return window['go']['main']['App']['UpdateSummary'](arg1, arg2);
+}
+
+export function UpdateTemplateElement(arg1, arg2) {
+  return window['go']['main']['App']['UpdateTemplateElement'](arg1, arg2);
 }
 
 export function UpdateWorkHistory(arg1, arg2) {

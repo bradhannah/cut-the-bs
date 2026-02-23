@@ -1,0 +1,12 @@
+diff --git a/src/pointerAction.js b/src/pointerAction.js
+index ba446352858914bbd56537b3e1bdfe7ec9c59968..4772fcd1de196d7dad05266d6a5112589cf3536f 100644
+--- a/src/pointerAction.js
++++ b/src/pointerAction.js
+@@ -511,6 +511,7 @@ export function dndzone(node, options) {
+         originDropZoneRoot.appendChild(draggedEl);
+         // We will keep the original dom node in the dom because touch events keep firing on it, we want to re-add it after the framework removes it
+         function keepOriginalElementInDom() {
++            if (!originalDragTarget) return; // guard against race with cleanupPostDrop (GitHub issue #648)
+             if (!originalDragTarget.parentElement) {
+                 originalDragTarget.setAttribute(ORIGINAL_DRAGGED_ITEM_MARKER_ATTRIBUTE, true);
+                 originDropZoneRoot.appendChild(originalDragTarget);

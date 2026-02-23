@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"cut-the-bs/internal/domain"
 )
@@ -18,6 +19,7 @@ type ExportStore interface {
 
 	// Content
 	GetSummary(ctx context.Context, id int64) (domain.ProfessionalSummary, error)
+	ListSummaries(ctx context.Context) ([]domain.ProfessionalSummary, error)
 	ListWorkHistory(ctx context.Context) ([]domain.WorkHistoryEntry, error)
 	ListSkills(ctx context.Context) ([]domain.Skill, error)
 	ListSkillCategories(ctx context.Context) ([]domain.SkillCategory, error)
@@ -26,9 +28,13 @@ type ExportStore interface {
 	ListDescriptors(ctx context.Context) ([]domain.RoleDescriptor, error)
 	ListCoreExpertise(ctx context.Context) ([]domain.CoreExpertise, error)
 
+	// Templates
+	GetDocumentTemplate(ctx context.Context, id int64) (domain.TemplateDetail, error)
+
 	// Export records
 	ListExports(ctx context.Context) ([]domain.ResumeExport, error)
 	CreateExport(ctx context.Context, export domain.ResumeExport) (domain.ResumeExport, error)
+	OverwriteExport(ctx context.Context, exportID int64, export domain.ResumeExport, req domain.ExportRequest) (domain.ResumeExport, error)
 	GetExport(ctx context.Context, id int64) (domain.ResumeExport, error)
 	CreateExportSelections(ctx context.Context, exportID int64, req domain.ExportRequest) error
 }
@@ -82,12 +88,201 @@ func (s *ResumeService) GetExport(
 	return s.store.GetExport(ctx, id)
 }
 
-// PreviewExport generates a PDF without creating an export record.
+// PreviewTemplate generates a preview PDF for a template using all
+// available user data (no content selection filtering). For resume
+// templates, all summaries, work history, skills, etc. are included.
+// For cover letter templates, placeholder values are substituted for
+// variables (e.g., "{{company_name}}" becomes "[Company Name]").
 // Returns the file path of the generated PDF.
+func (s *ResumeService) PreviewTemplate(
+	ctx context.Context,
+	templateID int64,
+) (string, error) {
+	if templateID == 0 {
+		return "", fmt.Errorf("template ID is required")
+	}
+
+	tmpl, err := s.store.GetDocumentTemplate(ctx, templateID)
+	if err != nil {
+		return "", fmt.Errorf("get template: %w", err)
+	}
+
+	if tmpl.TemplateType == domain.TemplateTypeCoverLetter {
+		return s.previewCoverLetterTemplate(ctx, tmpl)
+	}
+
+	return s.previewResumeTemplate(ctx, tmpl)
+}
+
+// previewResumeTemplate renders a resume template with all user data.
+func (s *ResumeService) previewResumeTemplate(
+	ctx context.Context,
+	tmpl domain.TemplateDetail,
+) (string, error) {
+	profile, err := s.store.GetProfile(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get profile: %w", err)
+	}
+
+	links, err := s.store.ListProfileLinks(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list profile links: %w", err)
+	}
+
+	summaries, err := s.store.ListSummaries(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list summaries: %w", err)
+	}
+
+	workHistory, err := s.store.ListWorkHistory(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list work history: %w", err)
+	}
+
+	skills, err := s.store.ListSkills(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list skills: %w", err)
+	}
+
+	skillCatNames, err := s.loadSkillCategoryNames(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	academics, err := s.store.ListAcademicCredentials(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list academics: %w", err)
+	}
+
+	certs, err := s.store.ListCertifications(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list certifications: %w", err)
+	}
+
+	descriptors, err := s.store.ListDescriptors(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list descriptors: %w", err)
+	}
+
+	coreExpertise, err := s.store.ListCoreExpertise(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list core expertise: %w", err)
+	}
+
+	renderReq := domain.RenderResumeRequest{
+		Template:           &tmpl,
+		OutputDir:          s.outputDir,
+		Profile:            profile,
+		Links:              links,
+		Summaries:          summaries,
+		MasterSummaryID:    inferPreviewMasterSummaryID(summaries),
+		WorkHistory:        workHistory,
+		Skills:             skills,
+		SkillCategoryNames: skillCatNames,
+		Academics:          academics,
+		Certs:              certs,
+		Descriptors:        descriptors,
+		CoreExpertise:      coreExpertise,
+	}
+
+	return s.renderer.RenderResume(ctx, renderReq)
+}
+
+func inferPreviewMasterSummaryID(summaries []domain.ProfessionalSummary) *int64 {
+	if len(summaries) == 0 {
+		return nil
+	}
+
+	var emptyMasterCandidate *int64
+	for _, summary := range summaries {
+		label := strings.ToLower(strings.TrimSpace(summary.Label))
+		switch label {
+		case "master", "master summary", "summary master":
+			id := summary.ID
+			if strings.TrimSpace(summary.BodyText) != "" {
+				return &id
+			}
+			if emptyMasterCandidate == nil {
+				emptyMasterCandidate = &id
+			}
+		}
+	}
+
+	for _, summary := range summaries {
+		if strings.TrimSpace(summary.BodyText) == "" {
+			continue
+		}
+		id := summary.ID
+		return &id
+	}
+
+	if emptyMasterCandidate != nil {
+		return emptyMasterCandidate
+	}
+
+	return nil
+}
+
+// previewCoverLetterTemplate renders a cover letter template with
+// profile data and placeholder substitutions for variables.
+func (s *ResumeService) previewCoverLetterTemplate(
+	ctx context.Context,
+	tmpl domain.TemplateDetail,
+) (string, error) {
+	profile, err := s.store.GetProfile(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get profile: %w", err)
+	}
+
+	links, err := s.store.ListProfileLinks(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list profile links: %w", err)
+	}
+
+	// Build placeholder substitution map for variables/prompts.
+	ts := NewTemplateService(nil)
+	vars := ts.ParseTemplateVariables(tmpl)
+
+	subs := make(map[string]string, len(vars.Variables)+len(vars.Prompts))
+	for _, v := range vars.Variables {
+		subs[v.Name] = "[" + v.Name + "]"
+	}
+	for _, p := range vars.Prompts {
+		subs["prompt:"+p.PromptText] = "[" + p.PromptText + "]"
+	}
+
+	clReq := domain.RenderCoverLetterRequest{
+		Template:        &tmpl,
+		OutputDir:       s.outputDir,
+		Profile:         profile,
+		Links:           links,
+		SubstitutionMap: subs,
+	}
+
+	return s.renderer.RenderCoverLetter(ctx, clReq)
+}
+
+// PreviewExport generates a PDF without creating an export record.
+// Returns the file path of the generated PDF. Supports both resume
+// and cover letter templates.
 func (s *ResumeService) PreviewExport(
 	ctx context.Context,
 	req domain.ExportRequest,
 ) (string, error) {
+	if req.TemplateID == 0 {
+		return "", fmt.Errorf("template ID is required")
+	}
+
+	// Load the template to detect its type.
+	tmpl, err := s.store.GetDocumentTemplate(ctx, req.TemplateID)
+	if err != nil {
+		return "", fmt.Errorf("get template: %w", err)
+	}
+
+	if tmpl.TemplateType == domain.TemplateTypeCoverLetter {
+		return s.createCoverLetterExport(ctx, req, tmpl)
+	}
+
 	if err := validateExportRequest(req); err != nil {
 		return "", err
 	}
@@ -101,23 +296,34 @@ func (s *ResumeService) PreviewExport(
 }
 
 // CreateExport generates a PDF, creates an export record, and
-// snapshots the content selections.
+// snapshots the content selections. Detects the template type
+// and routes to either RenderResume or RenderCoverLetter.
 func (s *ResumeService) CreateExport(
 	ctx context.Context,
 	req domain.ExportRequest,
 ) (domain.ResumeExport, error) {
-	if err := validateExportRequest(req); err != nil {
-		return domain.ResumeExport{}, err
+	if req.TemplateID == 0 {
+		return domain.ResumeExport{}, fmt.Errorf("template ID is required")
 	}
 
-	renderReq, err := s.assembleRenderRequest(ctx, req)
+	// Load the template to detect its type.
+	tmpl, err := s.store.GetDocumentTemplate(ctx, req.TemplateID)
 	if err != nil {
-		return domain.ResumeExport{}, err
+		return domain.ResumeExport{}, fmt.Errorf("get template: %w", err)
 	}
 
-	filePath, err := s.renderer.RenderResume(ctx, renderReq)
+	var filePath string
+
+	if tmpl.TemplateType == domain.TemplateTypeCoverLetter {
+		filePath, err = s.createCoverLetterExport(ctx, req, tmpl)
+	} else {
+		if err := validateExportRequest(req); err != nil {
+			return domain.ResumeExport{}, err
+		}
+		filePath, err = s.createResumeExport(ctx, req, tmpl)
+	}
 	if err != nil {
-		return domain.ResumeExport{}, fmt.Errorf("render resume: %w", err)
+		return domain.ResumeExport{}, err
 	}
 
 	// For the historical export record, snapshot the first summary ID
@@ -128,11 +334,13 @@ func (s *ResumeService) CreateExport(
 		snapshotSummaryID = &sid
 	}
 
+	templateRefID := req.TemplateID
 	export, err := s.store.CreateExport(ctx, domain.ResumeExport{
-		TemplateID: req.TemplateID,
-		FilePath:   filePath,
-		SummaryID:  snapshotSummaryID,
-		LensID:     req.LensID,
+		TemplateID:    tmpl.Name,
+		TemplateRefID: &templateRefID,
+		FilePath:      filePath,
+		SummaryID:     snapshotSummaryID,
+		LensID:        req.LensID,
 	})
 	if err != nil {
 		return domain.ResumeExport{}, fmt.Errorf("create export record: %w", err)
@@ -145,10 +353,110 @@ func (s *ResumeService) CreateExport(
 	return export, nil
 }
 
+// OverwriteExport regenerates a PDF and overwrites an existing export
+// record and its selection snapshot in-place.
+func (s *ResumeService) OverwriteExport(
+	ctx context.Context,
+	exportID int64,
+	req domain.ExportRequest,
+) (domain.ResumeExport, error) {
+	if exportID == 0 {
+		return domain.ResumeExport{}, fmt.Errorf("export ID is required")
+	}
+	if req.TemplateID == 0 {
+		return domain.ResumeExport{}, fmt.Errorf("template ID is required")
+	}
+
+	tmpl, err := s.store.GetDocumentTemplate(ctx, req.TemplateID)
+	if err != nil {
+		return domain.ResumeExport{}, fmt.Errorf("get template: %w", err)
+	}
+
+	var filePath string
+	if tmpl.TemplateType == domain.TemplateTypeCoverLetter {
+		filePath, err = s.createCoverLetterExport(ctx, req, tmpl)
+	} else {
+		if err := validateExportRequest(req); err != nil {
+			return domain.ResumeExport{}, err
+		}
+		filePath, err = s.createResumeExport(ctx, req, tmpl)
+	}
+	if err != nil {
+		return domain.ResumeExport{}, err
+	}
+
+	var snapshotSummaryID *int64
+	if len(req.SummaryIDs) > 0 {
+		sid := req.SummaryIDs[0]
+		snapshotSummaryID = &sid
+	}
+
+	templateRefID := req.TemplateID
+	return s.store.OverwriteExport(ctx, exportID, domain.ResumeExport{
+		ID:            exportID,
+		TemplateID:    tmpl.Name,
+		TemplateRefID: &templateRefID,
+		FilePath:      filePath,
+		SummaryID:     snapshotSummaryID,
+		LensID:        req.LensID,
+	}, req)
+}
+
+// createResumeExport assembles and renders a resume PDF.
+func (s *ResumeService) createResumeExport(
+	ctx context.Context,
+	req domain.ExportRequest,
+	tmpl domain.TemplateDetail,
+) (string, error) {
+	renderReq, err := s.assembleRenderRequest(ctx, req)
+	if err != nil {
+		return "", err
+	}
+
+	filePath, err := s.renderer.RenderResume(ctx, renderReq)
+	if err != nil {
+		return "", fmt.Errorf("render resume: %w", err)
+	}
+
+	return filePath, nil
+}
+
+// createCoverLetterExport assembles and renders a cover letter PDF.
+func (s *ResumeService) createCoverLetterExport(
+	ctx context.Context,
+	req domain.ExportRequest,
+	tmpl domain.TemplateDetail,
+) (string, error) {
+	profile, err := s.store.GetProfile(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get profile: %w", err)
+	}
+
+	links, err := s.store.ListProfileLinks(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list profile links: %w", err)
+	}
+
+	clReq := domain.RenderCoverLetterRequest{
+		Template:        &tmpl,
+		OutputDir:       s.outputDir,
+		Profile:         profile,
+		Links:           links,
+		SubstitutionMap: req.SubstitutionMap,
+	}
+
+	filePath, err := s.renderer.RenderCoverLetter(ctx, clReq)
+	if err != nil {
+		return "", fmt.Errorf("render cover letter: %w", err)
+	}
+
+	return filePath, nil
+}
+
 // validateExportRequest checks that the export request has at least
 // one content item selected and a template ID.
 func validateExportRequest(req domain.ExportRequest) error {
-	if req.TemplateID == "" {
+	if req.TemplateID == 0 {
 		return fmt.Errorf("template ID is required")
 	}
 
@@ -234,8 +542,14 @@ func (s *ResumeService) assembleRenderRequest(
 		return domain.RenderResumeRequest{}, err
 	}
 
+	// Load the document template for rendering.
+	tmpl, err := s.store.GetDocumentTemplate(ctx, req.TemplateID)
+	if err != nil {
+		return domain.RenderResumeRequest{}, fmt.Errorf("get template: %w", err)
+	}
+
 	return domain.RenderResumeRequest{
-		TemplateID:         req.TemplateID,
+		Template:           &tmpl,
 		OutputDir:          s.outputDir,
 		Profile:            profile,
 		Links:              links,

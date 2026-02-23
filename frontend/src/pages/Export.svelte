@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import {
-    listTemplates,
+    listDocumentTemplates,
     listWorkHistory,
     listSkillsByCategory,
     listAcademicCredentials,
@@ -15,7 +15,7 @@
     createExport,
     openExportFile,
     addToast,
-    type ResumeTemplate,
+    type DocumentTemplate,
     type WorkHistoryEntry,
     type SkillCategoryWithSkills,
     type AcademicCredential,
@@ -31,7 +31,7 @@
   import { formatTimestamp } from "../services/dateFormat";
 
   // --- Data ---
-  let templates: ResumeTemplate[] = [];
+  let docTemplates: DocumentTemplate[] = [];
   let workHistory: WorkHistoryEntry[] = [];
   let skillCategories: SkillCategoryWithSkills[] = [];
   let academics: AcademicCredential[] = [];
@@ -47,7 +47,7 @@
   let skillCategoriesExpanded = true;
 
   // --- Selections ---
-  let selectedTemplate = "";
+  let selectedTemplateId: number | null = null;
   let selectedLensId: number | null = null;
   let selectedSummaryIds: Set<number> = new Set();
   let masterSummaryId: number | null = null;
@@ -59,6 +59,10 @@
   let selectedDescriptorIds: Set<number> = new Set();
   let selectedCoreExpertiseIds: Set<number> = new Set();
 
+  // --- Derived ---
+  $: resumeTemplates = docTemplates.filter(
+    (t) => t.template_type === "resume"
+  );
   onMount(async () => {
     await loadAllData();
   });
@@ -67,7 +71,7 @@
     loading = true;
     try {
       const results = await Promise.all([
-        listTemplates(),
+        listDocumentTemplates(),
         listWorkHistory(),
         listSkillsByCategory(),
         listAcademicCredentials(),
@@ -79,7 +83,7 @@
         listCoreExpertise(),
       ]);
 
-      templates = results[0] || [];
+      docTemplates = results[0] || [];
       workHistory = results[1] || [];
       skillCategories = results[2] || [];
       academics = results[3] || [];
@@ -90,9 +94,12 @@
       lenses = results[8] || [];
       coreExpertise = results[9] || [];
 
-      // Default to first template.
-      if (templates.length > 0 && !selectedTemplate) {
-        selectedTemplate = templates[0].id;
+      // Default to first resume template.
+      if (docTemplates.length > 0 && selectedTemplateId === null) {
+        const firstResume = docTemplates.find(
+          (t) => t.template_type === "resume"
+        );
+        selectedTemplateId = firstResume ? firstResume.id : docTemplates[0].id;
       }
     } finally {
       loading = false;
@@ -281,11 +288,11 @@
     selectedDescriptorIds.size > 0 ||
     selectedCoreExpertiseIds.size > 0;
 
-  $: canGenerate = selectedTemplate && hasContent && !generating;
+  $: canGenerate = selectedTemplateId !== null && hasContent && !generating;
 
   // --- Generate ---
   async function handleGenerate(): Promise<void> {
-    if (!canGenerate) {
+    if (!canGenerate || selectedTemplateId === null) {
       addToast("error", "Select a template and at least one content item");
       return;
     }
@@ -293,7 +300,7 @@
     generating = true;
     try {
       const req: ExportRequest = {
-        template_id: selectedTemplate,
+        template_id: selectedTemplateId,
         lens_id: selectedLensId,
         summary_ids: [...selectedSummaryIds],
         master_summary_id: masterSummaryId,
@@ -309,7 +316,7 @@
       await createExport(req);
       exports = await listExports();
     } catch {
-      // Toast already shown
+      // Toast already shown.
     } finally {
       generating = false;
     }
@@ -324,8 +331,8 @@
   }
 
   function getTemplateName(templateId: string): string {
-    const t = templates.find((t) => t.id === templateId);
-    return t ? t.name : templateId;
+    // templateId in exports is the template name (string snapshot).
+    return templateId;
   }
 </script>
 
@@ -341,8 +348,7 @@
     </button>
   </div>
   <p class="page-description">
-    Select a template and the content to include in your resume, then generate a
-    PDF.
+    Select a template and the content to include, then generate a PDF.
   </p>
 
   {#if loading}
@@ -354,18 +360,24 @@
         <!-- Template Selection -->
         <section class="selection-section">
           <h3 class="section-title">Template</h3>
-          <div class="template-grid">
-            {#each templates as template (template.id)}
-              <button
-                class="template-card"
-                class:selected={selectedTemplate === template.id}
-                on:click={() => (selectedTemplate = template.id)}
-              >
-                <span class="template-name">{template.name}</span>
-                <span class="template-desc">{template.description}</span>
-              </button>
-            {/each}
-          </div>
+          {#if resumeTemplates.length > 0}
+            <div class="template-type-label">Resume</div>
+            <div class="template-grid">
+              {#each resumeTemplates as template (template.id)}
+                <button
+                  class="template-card"
+                  class:selected={selectedTemplateId === template.id}
+                  on:click={() => (selectedTemplateId = template.id)}
+                >
+                  <span class="template-name">{template.name}</span>
+                  <span class="template-desc">{template.description}</span>
+                  {#if template.is_builtin}
+                    <span class="template-badge">Built-in</span>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
         </section>
 
         <!-- Lens Pre-fill -->
@@ -703,7 +715,6 @@
           </section>
         {/if}
       </div>
-
       <!-- Right: Export History -->
       <div class="history-panel">
         <h3 class="section-title">Export History</h3>
@@ -1206,4 +1217,20 @@
     color: #e0a060;
     margin-bottom: 8px;
   }
+
+  .template-type-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #7a8a9a;
+    margin-bottom: 6px;
+  }
+
+  .template-badge {
+    font-size: 0.7rem;
+    color: #4a8af4;
+    font-weight: 600;
+  }
+
 </style>

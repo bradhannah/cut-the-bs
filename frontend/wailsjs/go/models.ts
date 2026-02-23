@@ -75,10 +75,12 @@ export namespace domain {
 	export class ApplicationInput {
 	    company_name: string;
 	    position_title: string;
+	    job_posting_url: string;
 	    date_applied: string;
 	    fit_indicator: string;
 	    resume_export_id?: number;
-	    cover_letter_id?: number;
+	    cover_letter_template_id?: number;
+	    cover_letter_latest_export_id?: number;
 	    notes: string;
 	
 	    static createFrom(source: any = {}) {
@@ -89,10 +91,12 @@ export namespace domain {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.company_name = source["company_name"];
 	        this.position_title = source["position_title"];
+	        this.job_posting_url = source["job_posting_url"];
 	        this.date_applied = source["date_applied"];
 	        this.fit_indicator = source["fit_indicator"];
 	        this.resume_export_id = source["resume_export_id"];
-	        this.cover_letter_id = source["cover_letter_id"];
+	        this.cover_letter_template_id = source["cover_letter_template_id"];
+	        this.cover_letter_latest_export_id = source["cover_letter_latest_export_id"];
 	        this.notes = source["notes"];
 	    }
 	}
@@ -226,8 +230,64 @@ export namespace domain {
 	        this.body_text = source["body_text"];
 	    }
 	}
+	export class DocumentTemplate {
+	    id: number;
+	    name: string;
+	    description: string;
+	    template_type: string;
+	    is_builtin: boolean;
+	    margin_top: number;
+	    margin_bottom: number;
+	    margin_left: number;
+	    margin_right: number;
+	    created_at: string;
+	    updated_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DocumentTemplate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.template_type = source["template_type"];
+	        this.is_builtin = source["is_builtin"];
+	        this.margin_top = source["margin_top"];
+	        this.margin_bottom = source["margin_bottom"];
+	        this.margin_left = source["margin_left"];
+	        this.margin_right = source["margin_right"];
+	        this.created_at = source["created_at"];
+	        this.updated_at = source["updated_at"];
+	    }
+	}
+	export class DocumentTemplateInput {
+	    name: string;
+	    description: string;
+	    template_type: string;
+	    margin_top: number;
+	    margin_bottom: number;
+	    margin_left: number;
+	    margin_right: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DocumentTemplateInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.template_type = source["template_type"];
+	        this.margin_top = source["margin_top"];
+	        this.margin_bottom = source["margin_bottom"];
+	        this.margin_left = source["margin_left"];
+	        this.margin_right = source["margin_right"];
+	    }
+	}
 	export class ExportRequest {
-	    template_id: string;
+	    template_id: number;
 	    lens_id?: number;
 	    summary_ids: number[];
 	    master_summary_id?: number;
@@ -239,6 +299,7 @@ export namespace domain {
 	    certification_ids: number[];
 	    descriptor_ids: number[];
 	    core_expertise_ids: number[];
+	    substitution_map?: Record<string, string>;
 	
 	    static createFrom(source: any = {}) {
 	        return new ExportRequest(source);
@@ -258,6 +319,29 @@ export namespace domain {
 	        this.certification_ids = source["certification_ids"];
 	        this.descriptor_ids = source["descriptor_ids"];
 	        this.core_expertise_ids = source["core_expertise_ids"];
+	        this.substitution_map = source["substitution_map"];
+	    }
+	}
+	export class GuidedPrompt {
+	    key?: string;
+	    prompt_text: string;
+	    help_text?: string;
+	    required?: boolean;
+	    multiline?: boolean;
+	    source: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GuidedPrompt(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.prompt_text = source["prompt_text"];
+	        this.help_text = source["help_text"];
+	        this.required = source["required"];
+	        this.multiline = source["multiline"];
+	        this.source = source["source"];
 	    }
 	}
 	export class ImportResult {
@@ -280,11 +364,13 @@ export namespace domain {
 	    id: number;
 	    company_name: string;
 	    position_title: string;
+	    job_posting_url: string;
 	    date_applied: string;
 	    status: string;
 	    fit_indicator: string;
 	    resume_export_id?: number;
-	    cover_letter_id?: number;
+	    cover_letter_template_id?: number;
+	    cover_letter_latest_export_id?: number;
 	    notes: string;
 	    created_at: string;
 	    updated_at: string;
@@ -298,11 +384,13 @@ export namespace domain {
 	        this.id = source["id"];
 	        this.company_name = source["company_name"];
 	        this.position_title = source["position_title"];
+	        this.job_posting_url = source["job_posting_url"];
 	        this.date_applied = source["date_applied"];
 	        this.status = source["status"];
 	        this.fit_indicator = source["fit_indicator"];
 	        this.resume_export_id = source["resume_export_id"];
-	        this.cover_letter_id = source["cover_letter_id"];
+	        this.cover_letter_template_id = source["cover_letter_template_id"];
+	        this.cover_letter_latest_export_id = source["cover_letter_latest_export_id"];
 	        this.notes = source["notes"];
 	        this.created_at = source["created_at"];
 	        this.updated_at = source["updated_at"];
@@ -538,6 +626,7 @@ export namespace domain {
 	export class ResumeExport {
 	    id: number;
 	    template_id: string;
+	    template_ref_id?: number;
 	    file_path: string;
 	    summary_id?: number;
 	    lens_id?: number;
@@ -551,6 +640,7 @@ export namespace domain {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.template_id = source["template_id"];
+	        this.template_ref_id = source["template_ref_id"];
 	        this.file_path = source["file_path"];
 	        this.summary_id = source["summary_id"];
 	        this.lens_id = source["lens_id"];
@@ -748,6 +838,147 @@ export namespace domain {
 	        this.label = source["label"];
 	        this.body_text = source["body_text"];
 	    }
+	}
+	export class TemplateElement {
+	    id: number;
+	    template_id: number;
+	    parent_id?: number;
+	    element_type: string;
+	    config: string;
+	    sort_order: number;
+	    created_at: string;
+	    updated_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TemplateElement(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.template_id = source["template_id"];
+	        this.parent_id = source["parent_id"];
+	        this.element_type = source["element_type"];
+	        this.config = source["config"];
+	        this.sort_order = source["sort_order"];
+	        this.created_at = source["created_at"];
+	        this.updated_at = source["updated_at"];
+	    }
+	}
+	export class TemplateDetail {
+	    id: number;
+	    name: string;
+	    description: string;
+	    template_type: string;
+	    is_builtin: boolean;
+	    margin_top: number;
+	    margin_bottom: number;
+	    margin_left: number;
+	    margin_right: number;
+	    created_at: string;
+	    updated_at: string;
+	    elements: TemplateElement[];
+	
+	    static createFrom(source: any = {}) {
+	        return new TemplateDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.template_type = source["template_type"];
+	        this.is_builtin = source["is_builtin"];
+	        this.margin_top = source["margin_top"];
+	        this.margin_bottom = source["margin_bottom"];
+	        this.margin_left = source["margin_left"];
+	        this.margin_right = source["margin_right"];
+	        this.created_at = source["created_at"];
+	        this.updated_at = source["updated_at"];
+	        this.elements = this.convertValues(source["elements"], TemplateElement);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class TemplateElementInput {
+	    parent_id?: number;
+	    element_type: string;
+	    config: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TemplateElementInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.parent_id = source["parent_id"];
+	        this.element_type = source["element_type"];
+	        this.config = source["config"];
+	    }
+	}
+	export class TemplateVariable {
+	    name: string;
+	    source: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TemplateVariable(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.source = source["source"];
+	    }
+	}
+	export class TemplateVariables {
+	    variables: TemplateVariable[];
+	    prompts: GuidedPrompt[];
+	
+	    static createFrom(source: any = {}) {
+	        return new TemplateVariables(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.variables = this.convertValues(source["variables"], TemplateVariable);
+	        this.prompts = this.convertValues(source["prompts"], GuidedPrompt);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class UserProfile {
 	    id: number;

@@ -238,8 +238,9 @@ func seedFullResume(t *testing.T, store *sqlite.Store) domain.RenderResumeReques
 		descList = append(descList, desc)
 	}
 
+	profTmpl := pdf.ProfessionalTemplate()
 	return domain.RenderResumeRequest{
-		TemplateID:  "professional",
+		Template:    &profTmpl,
 		OutputDir:   t.TempDir(),
 		Profile:     profile,
 		Links:       links,
@@ -281,9 +282,13 @@ func TestPerformance_PDFBothTemplatesUnder5Seconds(t *testing.T) {
 	req := seedFullResume(t, store)
 	renderer := pdf.NewRenderer()
 
-	for _, tmpl := range []string{"professional", "modern"} {
-		t.Run(tmpl, func(t *testing.T) {
-			req.TemplateID = tmpl
+	templates := map[string]domain.TemplateDetail{
+		"professional": pdf.ProfessionalTemplate(),
+		"modern":       pdf.ModernTemplate(),
+	}
+	for name, tmpl := range templates {
+		t.Run(name, func(t *testing.T) {
+			req.Template = &tmpl
 			req.OutputDir = t.TempDir()
 
 			start := time.Now()
@@ -293,9 +298,9 @@ func TestPerformance_PDFBothTemplatesUnder5Seconds(t *testing.T) {
 			require.NoError(t, err)
 			assert.FileExists(t, path)
 			assert.Less(t, elapsed, 5*time.Second,
-				"template %q should render within 5 seconds (took %v)", tmpl, elapsed)
+				"template %q should render within 5 seconds (took %v)", name, elapsed)
 
-			t.Logf("Template %q: %v", tmpl, elapsed)
+			t.Logf("Template %q: %v", name, elapsed)
 		})
 	}
 }

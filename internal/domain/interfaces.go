@@ -373,6 +373,47 @@ type Store interface {
 	// CreateStatusChange records a status transition.
 	CreateStatusChange(ctx context.Context, change StatusChange) (StatusChange, error)
 
+	// --- Document Templates ---
+
+	// ListDocumentTemplates returns all document templates ordered
+	// by is_builtin DESC, name ASC. Built-in templates appear first.
+	ListDocumentTemplates(ctx context.Context) ([]DocumentTemplate, error)
+
+	// GetDocumentTemplate returns a template with all its elements.
+	GetDocumentTemplate(ctx context.Context, id int64) (TemplateDetail, error)
+
+	// CreateDocumentTemplate creates a new user document template.
+	CreateDocumentTemplate(ctx context.Context, input DocumentTemplateInput) (DocumentTemplate, error)
+
+	// UpdateDocumentTemplate updates a user template's metadata.
+	// Built-in templates cannot be updated.
+	UpdateDocumentTemplate(ctx context.Context, id int64, input DocumentTemplateInput) (DocumentTemplate, error)
+
+	// DeleteDocumentTemplate deletes a user template. Built-in
+	// templates cannot be deleted. Elements are cascade deleted.
+	DeleteDocumentTemplate(ctx context.Context, id int64) error
+
+	// DuplicateDocumentTemplate creates a copy of a template with
+	// all its elements. The copy is always user-created.
+	DuplicateDocumentTemplate(ctx context.Context, id int64, newName string) (DocumentTemplate, error)
+
+	// --- Template Elements ---
+
+	// CreateTemplateElement adds a new element to a template,
+	// appended to the end of the sort order within its parent scope.
+	CreateTemplateElement(ctx context.Context, templateID int64, input TemplateElementInput) (TemplateElement, error)
+
+	// UpdateTemplateElement updates an element's type and config.
+	UpdateTemplateElement(ctx context.Context, id int64, input TemplateElementInput) (TemplateElement, error)
+
+	// DeleteTemplateElement removes an element from a template.
+	DeleteTemplateElement(ctx context.Context, id int64) error
+
+	// ReorderTemplateElements updates sort_order for elements
+	// within a specific parent scope (top-level if parentID is nil,
+	// or within a specific loop container).
+	ReorderTemplateElements(ctx context.Context, templateID int64, parentID *int64, orderedIDs []int64) error
+
 	// --- Data Management ---
 
 	// ExportAllData returns all data in the database as a single
@@ -411,7 +452,7 @@ type PDFRenderer interface {
 
 // RenderResumeRequest holds all data needed to render a resume PDF.
 type RenderResumeRequest struct {
-	TemplateID         string
+	Template           *TemplateDetail
 	OutputDir          string
 	Profile            UserProfile
 	Links              []ProfileLink
@@ -429,8 +470,10 @@ type RenderResumeRequest struct {
 // RenderCoverLetterRequest holds all data needed to render a cover
 // letter PDF.
 type RenderCoverLetterRequest struct {
-	OutputDir string
-	Profile   UserProfile
-	Links     []ProfileLink
-	Letter    CoverLetter
+	Template        *TemplateDetail
+	OutputDir       string
+	Profile         UserProfile
+	Links           []ProfileLink
+	Letter          CoverLetter
+	SubstitutionMap map[string]string // variable_name → value for {{variable_name}} replacement
 }

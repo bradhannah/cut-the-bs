@@ -22,6 +22,7 @@ func TestCreateApplication(t *testing.T) {
 	app, err := s.CreateApplication(ctx, domain.ApplicationInput{
 		CompanyName:   "Acme Corp",
 		PositionTitle: "Software Engineer",
+		JobPostingURL: "https://example.com/jobs/123",
 		DateApplied:   "2025-01-15",
 		FitIndicator:  domain.FitStrong,
 		Notes:         "Referred by Jane",
@@ -30,12 +31,14 @@ func TestCreateApplication(t *testing.T) {
 	assert.NotZero(t, app.ID)
 	assert.Equal(t, "Acme Corp", app.CompanyName)
 	assert.Equal(t, "Software Engineer", app.PositionTitle)
+	assert.Equal(t, "https://example.com/jobs/123", app.JobPostingURL)
 	assert.Equal(t, "2025-01-15", app.DateApplied)
 	assert.Equal(t, domain.StatusApplied, app.Status)
 	assert.Equal(t, domain.FitStrong, app.FitIndicator)
 	assert.Equal(t, "Referred by Jane", app.Notes)
 	assert.Nil(t, app.ResumeExportID)
-	assert.Nil(t, app.CoverLetterID)
+	assert.Nil(t, app.CoverLetterTemplateID)
+	assert.Nil(t, app.CoverLetterLatestExportID)
 	assert.NotEmpty(t, app.CreatedAt)
 }
 
@@ -122,6 +125,7 @@ func TestUpdateApplication(t *testing.T) {
 	updated, err := s.UpdateApplication(ctx, created.ID, domain.ApplicationInput{
 		CompanyName:   "Acme Corp Inc",
 		PositionTitle: "Senior SWE",
+		JobPostingURL: "https://example.com/jobs/456",
 		DateApplied:   "2025-01-20",
 		FitIndicator:  domain.FitPerfect,
 		Notes:         "Updated notes",
@@ -129,6 +133,7 @@ func TestUpdateApplication(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Acme Corp Inc", updated.CompanyName)
 	assert.Equal(t, "Senior SWE", updated.PositionTitle)
+	assert.Equal(t, "https://example.com/jobs/456", updated.JobPostingURL)
 	assert.Equal(t, "2025-01-20", updated.DateApplied)
 	assert.Equal(t, domain.FitPerfect, updated.FitIndicator)
 	assert.Equal(t, "Updated notes", updated.Notes)
