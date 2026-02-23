@@ -332,29 +332,33 @@ type CoverLetterInput struct {
 
 // JobApplication is a record of a job submission with status tracking.
 type JobApplication struct {
-	ID             int64  `json:"id"`
-	CompanyName    string `json:"company_name"`
-	PositionTitle  string `json:"position_title"`
-	DateApplied    string `json:"date_applied"`
-	Status         string `json:"status"`
-	FitIndicator   string `json:"fit_indicator"`
-	ResumeExportID *int64 `json:"resume_export_id"`
-	CoverLetterID  *int64 `json:"cover_letter_id"`
-	Notes          string `json:"notes"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
+	ID                        int64  `json:"id"`
+	CompanyName               string `json:"company_name"`
+	PositionTitle             string `json:"position_title"`
+	JobPostingURL             string `json:"job_posting_url"`
+	DateApplied               string `json:"date_applied"`
+	Status                    string `json:"status"`
+	FitIndicator              string `json:"fit_indicator"`
+	ResumeExportID            *int64 `json:"resume_export_id"`
+	CoverLetterTemplateID     *int64 `json:"cover_letter_template_id"`
+	CoverLetterLatestExportID *int64 `json:"cover_letter_latest_export_id"`
+	Notes                     string `json:"notes"`
+	CreatedAt                 string `json:"created_at"`
+	UpdatedAt                 string `json:"updated_at"`
 }
 
 // ApplicationInput is the input type for creating or updating a
 // job application.
 type ApplicationInput struct {
-	CompanyName    string `json:"company_name"`
-	PositionTitle  string `json:"position_title"`
-	DateApplied    string `json:"date_applied"`
-	FitIndicator   string `json:"fit_indicator"`
-	ResumeExportID *int64 `json:"resume_export_id"`
-	CoverLetterID  *int64 `json:"cover_letter_id"`
-	Notes          string `json:"notes"`
+	CompanyName               string `json:"company_name"`
+	PositionTitle             string `json:"position_title"`
+	JobPostingURL             string `json:"job_posting_url"`
+	DateApplied               string `json:"date_applied"`
+	FitIndicator              string `json:"fit_indicator"`
+	ResumeExportID            *int64 `json:"resume_export_id"`
+	CoverLetterTemplateID     *int64 `json:"cover_letter_template_id"`
+	CoverLetterLatestExportID *int64 `json:"cover_letter_latest_export_id"`
+	Notes                     string `json:"notes"`
 }
 
 // StatusChange records a single status transition for a job
@@ -367,29 +371,42 @@ type StatusChange struct {
 	ChangedAt     string `json:"changed_at"`
 }
 
+// ApplicationPromptValue stores a saved cover-letter prompt/variable
+// value keyed by application + template.
+type ApplicationPromptValue struct {
+	ID            int64  `json:"id"`
+	ApplicationID int64  `json:"application_id"`
+	TemplateID    int64  `json:"template_id"`
+	FieldKey      string `json:"field_key"`
+	FieldValue    string `json:"field_value"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
+}
+
 // ExportData is the JSON envelope for a full data export. It
 // contains every entity in the system, allowing complete
 // backup/restore of user data.
 type ExportData struct {
-	SchemaVersion int                   `json:"schema_version"`
-	ExportedAt    string                `json:"exported_at"`
-	Profile       UserProfile           `json:"profile"`
-	ProfileLinks  []ProfileLink         `json:"profile_links"`
-	WorkHistory   []WorkHistoryEntry    `json:"work_history"`
-	Categories    []SkillCategory       `json:"skill_categories"`
-	Skills        []Skill               `json:"skills"`
-	Academics     []AcademicCredential  `json:"academics"`
-	Certs         []Certification       `json:"certifications"`
-	Summaries     []ProfessionalSummary `json:"summaries"`
-	Descriptors   []RoleDescriptor      `json:"descriptors"`
-	CoreExpertise []CoreExpertise       `json:"core_expertise"`
-	Lenses        []LensDetail          `json:"lenses"`
-	Templates     []TemplateDetail      `json:"templates"`
-	Exports       []ResumeExport        `json:"exports"`
-	CoverLetters  []CoverLetter         `json:"cover_letters"`
-	Applications  []JobApplication      `json:"applications"`
-	StatusChanges []StatusChange        `json:"status_changes"`
-	SkillLensTags []SkillLensTag        `json:"skill_lens_tags"`
+	SchemaVersion           int                      `json:"schema_version"`
+	ExportedAt              string                   `json:"exported_at"`
+	Profile                 UserProfile              `json:"profile"`
+	ProfileLinks            []ProfileLink            `json:"profile_links"`
+	WorkHistory             []WorkHistoryEntry       `json:"work_history"`
+	Categories              []SkillCategory          `json:"skill_categories"`
+	Skills                  []Skill                  `json:"skills"`
+	Academics               []AcademicCredential     `json:"academics"`
+	Certs                   []Certification          `json:"certifications"`
+	Summaries               []ProfessionalSummary    `json:"summaries"`
+	Descriptors             []RoleDescriptor         `json:"descriptors"`
+	CoreExpertise           []CoreExpertise          `json:"core_expertise"`
+	Lenses                  []LensDetail             `json:"lenses"`
+	Templates               []TemplateDetail         `json:"templates"`
+	Exports                 []ResumeExport           `json:"exports"`
+	CoverLetters            []CoverLetter            `json:"cover_letters"`
+	Applications            []JobApplication         `json:"applications"`
+	ApplicationPromptValues []ApplicationPromptValue `json:"application_prompt_values"`
+	StatusChanges           []StatusChange           `json:"status_changes"`
+	SkillLensTags           []SkillLensTag           `json:"skill_lens_tags"`
 }
 
 // SkillLensTag records the association between a skill and a lens

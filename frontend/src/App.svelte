@@ -8,7 +8,6 @@
   import Descriptors from "./pages/Descriptors.svelte";
   import CoreExpertise from "./pages/CoreExpertise.svelte";
   import Export from "./pages/Export.svelte";
-  import CoverLetters from "./pages/CoverLetters.svelte";
   import Applications from "./pages/Applications.svelte";
   import Lenses from "./pages/Lenses.svelte";
   import Settings from "./pages/Settings.svelte";
@@ -19,7 +18,7 @@
   import ZoomWidget from "./components/ZoomWidget.svelte";
 
   const routes = {
-    "/": WorkHistory,
+    "/": Applications,
     "/work-history": WorkHistory,
     "/skills": Skills,
     "/education": Education,
@@ -28,7 +27,6 @@
     "/core-expertise": CoreExpertise,
     "/lenses": Lenses,
     "/export": Export,
-    "/cover-letters": CoverLetters,
     "/applications": Applications,
     "/templates": TemplateList,
     "/templates/:id/builder": TemplateBuilder,
@@ -38,9 +36,12 @@
   interface NavItem {
     path: string;
     label: string;
+    primary?: boolean;
   }
 
   const navItems: NavItem[] = [
+    { path: "/", label: "Applications", primary: true },
+    { path: "/templates", label: "Templates" },
     { path: "/work-history", label: "Work History" },
     { path: "/skills", label: "Skills" },
     { path: "/education", label: "Education" },
@@ -49,9 +50,6 @@
     { path: "/core-expertise", label: "Core Expertise" },
     { path: "/lenses", label: "Lenses" },
     { path: "/export", label: "Export" },
-    { path: "/cover-letters", label: "Cover Letters" },
-    { path: "/applications", label: "Applications" },
-    { path: "/templates", label: "Templates" },
     { path: "/settings", label: "Settings" },
   ];
 </script>
@@ -65,6 +63,7 @@
       {#each navItems as item (item.path)}
         <li>
           <a
+            class:primary-link={item.primary}
             href={"#" + item.path}
             use:link
             use:active={{ path: item.path, className: "active" }}
@@ -72,6 +71,9 @@
             {item.label}
           </a>
         </li>
+        {#if item.primary}
+          <li class="nav-divider" aria-hidden="true"></li>
+        {/if}
       {/each}
     </ul>
   </nav>
@@ -134,6 +136,17 @@
     transition:
       background-color 0.15s,
       color 0.15s;
+  }
+
+  .nav-list a.primary-link {
+    font-weight: 700;
+    color: #dce7f5;
+    font-size: 0.94rem;
+  }
+
+  .nav-divider {
+    border-top: 1px solid #2a3a4a;
+    margin: 8px 12px;
   }
 
   .nav-list a:hover {

@@ -75,10 +75,12 @@ export namespace domain {
 	export class ApplicationInput {
 	    company_name: string;
 	    position_title: string;
+	    job_posting_url: string;
 	    date_applied: string;
 	    fit_indicator: string;
 	    resume_export_id?: number;
-	    cover_letter_id?: number;
+	    cover_letter_template_id?: number;
+	    cover_letter_latest_export_id?: number;
 	    notes: string;
 	
 	    static createFrom(source: any = {}) {
@@ -89,10 +91,12 @@ export namespace domain {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.company_name = source["company_name"];
 	        this.position_title = source["position_title"];
+	        this.job_posting_url = source["job_posting_url"];
 	        this.date_applied = source["date_applied"];
 	        this.fit_indicator = source["fit_indicator"];
 	        this.resume_export_id = source["resume_export_id"];
-	        this.cover_letter_id = source["cover_letter_id"];
+	        this.cover_letter_template_id = source["cover_letter_template_id"];
+	        this.cover_letter_latest_export_id = source["cover_letter_latest_export_id"];
 	        this.notes = source["notes"];
 	    }
 	}
@@ -319,7 +323,11 @@ export namespace domain {
 	    }
 	}
 	export class GuidedPrompt {
+	    key?: string;
 	    prompt_text: string;
+	    help_text?: string;
+	    required?: boolean;
+	    multiline?: boolean;
 	    source: string;
 	
 	    static createFrom(source: any = {}) {
@@ -328,7 +336,11 @@ export namespace domain {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
 	        this.prompt_text = source["prompt_text"];
+	        this.help_text = source["help_text"];
+	        this.required = source["required"];
+	        this.multiline = source["multiline"];
 	        this.source = source["source"];
 	    }
 	}
@@ -352,11 +364,13 @@ export namespace domain {
 	    id: number;
 	    company_name: string;
 	    position_title: string;
+	    job_posting_url: string;
 	    date_applied: string;
 	    status: string;
 	    fit_indicator: string;
 	    resume_export_id?: number;
-	    cover_letter_id?: number;
+	    cover_letter_template_id?: number;
+	    cover_letter_latest_export_id?: number;
 	    notes: string;
 	    created_at: string;
 	    updated_at: string;
@@ -370,11 +384,13 @@ export namespace domain {
 	        this.id = source["id"];
 	        this.company_name = source["company_name"];
 	        this.position_title = source["position_title"];
+	        this.job_posting_url = source["job_posting_url"];
 	        this.date_applied = source["date_applied"];
 	        this.status = source["status"];
 	        this.fit_indicator = source["fit_indicator"];
 	        this.resume_export_id = source["resume_export_id"];
-	        this.cover_letter_id = source["cover_letter_id"];
+	        this.cover_letter_template_id = source["cover_letter_template_id"];
+	        this.cover_letter_latest_export_id = source["cover_letter_latest_export_id"];
 	        this.notes = source["notes"];
 	        this.created_at = source["created_at"];
 	        this.updated_at = source["updated_at"];

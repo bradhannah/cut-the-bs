@@ -11,6 +11,7 @@
   export let element: TemplateElement;
   export let children: TemplateElement[] = [];
   export let selected: boolean = false;
+  export let readOnly: boolean = false;
 
   const dispatch = createEventDispatcher<{
     select: { id: number };
@@ -45,11 +46,13 @@
   }
 
   function handleDelete(e: MouseEvent): void {
+    if (readOnly) return;
     e.stopPropagation();
     dispatch("delete", { id: element.id });
   }
 
   function handleKeydown(e: KeyboardEvent): void {
+    if (readOnly) return;
     if (e.key === "Delete" || e.key === "Backspace") {
       if (selected) {
         dispatch("delete", { id: element.id });
@@ -70,26 +73,29 @@
   aria-label="Template element: {label}"
 >
   <div class="element-header">
-    <span class="drag-handle" title="Drag to reorder">&#x2630;</span>
+    <span class="drag-handle" class:readonly={readOnly} title="Drag to reorder">&#x2630;</span>
     <span class="element-icon">{icon}</span>
     <span class="element-label">{label}</span>
     {#if configPreview}
       <span class="config-preview">{configPreview}</span>
     {/if}
-    <button
-      class="delete-btn"
-      title="Delete element"
-      on:click={handleDelete}
-      aria-label="Delete {label}"
-    >
-      &times;
-    </button>
+    {#if !readOnly}
+      <button
+        class="delete-btn"
+        title="Delete element"
+        on:click={handleDelete}
+        aria-label="Delete {label}"
+      >
+        &times;
+      </button>
+    {/if}
   </div>
 
   {#if isLoop}
     <LoopContainer
       parentElement={element}
       {children}
+      {readOnly}
       on:select
       on:delete
     />
@@ -140,6 +146,11 @@
 
   .drag-handle:active {
     cursor: grabbing;
+  }
+
+  .drag-handle.readonly {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .element-icon {

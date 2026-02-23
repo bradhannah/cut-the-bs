@@ -21,6 +21,8 @@ type ApplicationStore interface {
 	DeleteApplication(ctx context.Context, id int64) error
 	GetApplicationHistory(ctx context.Context, applicationID int64) ([]domain.StatusChange, error)
 	CreateStatusChange(ctx context.Context, change domain.StatusChange) (domain.StatusChange, error)
+	GetApplicationPromptValues(ctx context.Context, applicationID int64, templateID int64) (map[string]string, error)
+	SaveApplicationPromptValues(ctx context.Context, applicationID int64, templateID int64, values map[string]string) error
 }
 
 // ApplicationService provides business-logic operations for job
@@ -104,4 +106,37 @@ func (s *ApplicationService) GetApplicationStatuses() []string {
 // values.
 func (s *ApplicationService) GetFitIndicators() []string {
 	return domain.AllFitIndicators
+}
+
+// GetApplicationPromptValues returns saved cover-letter prompt values
+// for an application+template pair.
+func (s *ApplicationService) GetApplicationPromptValues(
+	ctx context.Context,
+	applicationID int64,
+	templateID int64,
+) (map[string]string, error) {
+	if applicationID <= 0 {
+		return nil, fmt.Errorf("invalid application id: %d", applicationID)
+	}
+	if templateID <= 0 {
+		return nil, fmt.Errorf("invalid template id: %d", templateID)
+	}
+	return s.store.GetApplicationPromptValues(ctx, applicationID, templateID)
+}
+
+// SaveApplicationPromptValues replaces saved cover-letter prompt values
+// for an application+template pair.
+func (s *ApplicationService) SaveApplicationPromptValues(
+	ctx context.Context,
+	applicationID int64,
+	templateID int64,
+	values map[string]string,
+) error {
+	if applicationID <= 0 {
+		return fmt.Errorf("invalid application id: %d", applicationID)
+	}
+	if templateID <= 0 {
+		return fmt.Errorf("invalid template id: %d", templateID)
+	}
+	return s.store.SaveApplicationPromptValues(ctx, applicationID, templateID, values)
 }

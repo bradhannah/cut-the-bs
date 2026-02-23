@@ -205,6 +205,32 @@ type BodyTextConfig struct {
 	SpaceAfter  float64 `json:"space_after"`
 }
 
+// ParagraphSegmentConfig defines one ordered sub-component inside a
+// cover letter paragraph.
+// Type values:
+// - "static": use Text
+// - "profile": use Token (profile token)
+// - "application": use Token (application token)
+// - "adhoc": prompt for Key/Label and substitute answer value
+type ParagraphSegmentConfig struct {
+	Type      string `json:"type"`
+	Text      string `json:"text,omitempty"`
+	Token     string `json:"token,omitempty"`
+	Key       string `json:"key,omitempty"`
+	Label     string `json:"label,omitempty"`
+	HelpText  string `json:"help_text,omitempty"`
+	Required  bool   `json:"required,omitempty"`
+	Multiline bool   `json:"multiline,omitempty"`
+}
+
+// ParagraphConfig controls cover letter paragraph rendering.
+type ParagraphConfig struct {
+	FontSize    float64                  `json:"font_size"`
+	LineSpacing float64                  `json:"line_spacing"`
+	SpaceAfter  float64                  `json:"space_after"`
+	Segments    []ParagraphSegmentConfig `json:"segments"`
+}
+
 // DateConfig controls cover letter date rendering.
 type DateConfig struct {
 	FontSize   float64 `json:"font_size"`
@@ -607,7 +633,7 @@ func FormalCoverLetterTemplate() domain.TemplateDetail {
 		DocumentTemplate: domain.DocumentTemplate{
 			ID:           3,
 			Name:         "Formal",
-			Description:  "Traditional business letter with date, recipient address, and formal salutation",
+			Description:  "Traditional business-style cover letter with structured prompts and formal tone",
 			TemplateType: domain.TemplateTypeCoverLetter,
 			IsBuiltin:    true,
 			MarginTop:    72.0, // 1 inch
@@ -641,16 +667,44 @@ func FormalCoverLetterTemplate() domain.TemplateDetail {
 					Text: "Dear {{hiring_manager}},", FontSize: 10.0,
 					SpaceAfter: 10.0,
 				})},
-			{ID: 55, TemplateID: 3, ParentID: nil, ElementType: domain.ElementBodyText, SortOrder: 5,
-				Config: mustMarshal(BodyTextConfig{
-					FontSize: 10.0, LineSpacing: 3.0, SpaceAfter: 10.0,
+			{ID: 55, TemplateID: 3, ParentID: nil, ElementType: domain.ElementParagraph, SortOrder: 5,
+				Config: mustMarshal(ParagraphConfig{
+					FontSize: 10.0, LineSpacing: 1.15, SpaceAfter: 10.0,
+					Segments: []ParagraphSegmentConfig{
+						{Type: "static", Text: "I am writing to express my interest in the "},
+						{Type: "application", Token: "position_title"},
+						{Type: "static", Text: " role at "},
+						{Type: "application", Token: "company_name"},
+						{Type: "static", Text: ". "},
+						{Type: "adhoc", Key: "why_fit_formal", Label: "Why are you a strong fit?", HelpText: "Highlight relevant experience and outcomes you can deliver.", Required: true, Multiline: true},
+					},
 				})},
-			{ID: 56, TemplateID: 3, ParentID: nil, ElementType: domain.ElementClosing, SortOrder: 6,
+			{ID: 56, TemplateID: 3, ParentID: nil, ElementType: domain.ElementParagraph, SortOrder: 6,
+				Config: mustMarshal(ParagraphConfig{
+					FontSize: 10.0, LineSpacing: 1.15, SpaceAfter: 10.0,
+					Segments: []ParagraphSegmentConfig{
+						{Type: "static", Text: "I am especially interested in "},
+						{Type: "application", Token: "company_name"},
+						{Type: "static", Text: " because "},
+						{Type: "adhoc", Key: "why_company_formal", Label: "Why this company?", HelpText: "Mention a mission, product, or initiative that stands out to you.", Required: true, Multiline: true},
+						{Type: "static", Text: "."},
+					},
+				})},
+			{ID: 57, TemplateID: 3, ParentID: nil, ElementType: domain.ElementParagraph, SortOrder: 7,
+				Config: mustMarshal(ParagraphConfig{
+					FontSize: 10.0, LineSpacing: 1.15, SpaceAfter: 10.0,
+					Segments: []ParagraphSegmentConfig{
+						{Type: "static", Text: "Thank you for your time and consideration. I would welcome the opportunity to discuss how I can contribute to "},
+						{Type: "application", Token: "company_name"},
+						{Type: "static", Text: "."},
+					},
+				})},
+			{ID: 58, TemplateID: 3, ParentID: nil, ElementType: domain.ElementClosing, SortOrder: 8,
 				Config: mustMarshal(ClosingConfig{
 					Text: "Sincerely,", FontSize: 10.0,
 					SpaceAfter: 28.0,
 				})},
-			{ID: 57, TemplateID: 3, ParentID: nil, ElementType: domain.ElementStaticText, SortOrder: 7,
+			{ID: 59, TemplateID: 3, ParentID: nil, ElementType: domain.ElementStaticText, SortOrder: 9,
 				Config: mustMarshal(StaticTextConfig{
 					Text: "{{signer_name}}", FontSize: 10.0,
 					FontStyle: "regular", Alignment: "left",
@@ -672,7 +726,7 @@ func CasualCoverLetterTemplate() domain.TemplateDetail {
 		DocumentTemplate: domain.DocumentTemplate{
 			ID:           4,
 			Name:         "Casual",
-			Description:  "Relaxed format with greeting, body text, and casual sign-off",
+			Description:  "Conversational cover letter starter with lightweight prompts and approachable tone",
 			TemplateType: domain.TemplateTypeCoverLetter,
 			IsBuiltin:    true,
 			MarginTop:    72.0,
@@ -681,32 +735,54 @@ func CasualCoverLetterTemplate() domain.TemplateDetail {
 			MarginRight:  72.0,
 		},
 		Elements: []domain.TemplateElement{
-			{ID: 58, TemplateID: 4, ParentID: nil, ElementType: domain.ElementProfileHeader, SortOrder: 0,
+			{ID: 60, TemplateID: 4, ParentID: nil, ElementType: domain.ElementProfileHeader, SortOrder: 0,
 				Config: mustMarshal(ProfileHeaderConfig{
 					NameFontSize: 18.0, DetailFontSize: 10.0,
 					Alignment: "center", LinkSeparator: " | ",
 					ShowLinks: true, ShowLinksInline: false,
 					SpaceAfter: 6.0,
 				})},
-			{ID: 59, TemplateID: 4, ParentID: nil, ElementType: domain.ElementHorizontalRule, SortOrder: 1,
-				Config: mustMarshal(HorizontalRuleConfig{
-					Weight: 0.3, SpaceBefore: 2.0, SpaceAfter: 18.0,
-				})},
-			{ID: 60, TemplateID: 4, ParentID: nil, ElementType: domain.ElementGreeting, SortOrder: 2,
+			{ID: 61, TemplateID: 4, ParentID: nil, ElementType: domain.ElementGreeting, SortOrder: 1,
 				Config: mustMarshal(GreetingConfig{
 					Text: "Hi {{hiring_manager}},", FontSize: 10.0,
 					SpaceAfter: 10.0,
 				})},
-			{ID: 61, TemplateID: 4, ParentID: nil, ElementType: domain.ElementBodyText, SortOrder: 3,
-				Config: mustMarshal(BodyTextConfig{
-					FontSize: 10.0, LineSpacing: 3.0, SpaceAfter: 10.0,
+			{ID: 62, TemplateID: 4, ParentID: nil, ElementType: domain.ElementParagraph, SortOrder: 2,
+				Config: mustMarshal(ParagraphConfig{
+					FontSize: 10.0, LineSpacing: 1.15, SpaceAfter: 10.0,
+					Segments: []ParagraphSegmentConfig{
+						{Type: "static", Text: "I would love to join "},
+						{Type: "application", Token: "company_name"},
+						{Type: "static", Text: " as a "},
+						{Type: "application", Token: "position_title"},
+						{Type: "static", Text: ". What stands out to me about your team is "},
+						{Type: "adhoc", Key: "why_team_casual", Label: "What stands out about this team?", HelpText: "Keep it natural and specific.", Required: true, Multiline: true},
+						{Type: "static", Text: "."},
+					},
 				})},
-			{ID: 62, TemplateID: 4, ParentID: nil, ElementType: domain.ElementClosing, SortOrder: 4,
+			{ID: 63, TemplateID: 4, ParentID: nil, ElementType: domain.ElementParagraph, SortOrder: 3,
+				Config: mustMarshal(ParagraphConfig{
+					FontSize: 10.0, LineSpacing: 1.15, SpaceAfter: 10.0,
+					Segments: []ParagraphSegmentConfig{
+						{Type: "static", Text: "A quick example of what I would bring to this role: "},
+						{Type: "adhoc", Key: "value_example_casual", Label: "Quick value example", HelpText: "Share one example of impact or ownership.", Required: false, Multiline: true},
+					},
+				})},
+			{ID: 64, TemplateID: 4, ParentID: nil, ElementType: domain.ElementParagraph, SortOrder: 4,
+				Config: mustMarshal(ParagraphConfig{
+					FontSize: 10.0, LineSpacing: 1.15, SpaceAfter: 10.0,
+					Segments: []ParagraphSegmentConfig{
+						{Type: "static", Text: "If it is helpful, I can share more details and examples. You can reach me at "},
+						{Type: "profile", Token: "email"},
+						{Type: "static", Text: "."},
+					},
+				})},
+			{ID: 65, TemplateID: 4, ParentID: nil, ElementType: domain.ElementClosing, SortOrder: 5,
 				Config: mustMarshal(ClosingConfig{
-					Text: "Best regards,", FontSize: 10.0,
+					Text: "Thanks,", FontSize: 10.0,
 					SpaceAfter: 24.0,
 				})},
-			{ID: 63, TemplateID: 4, ParentID: nil, ElementType: domain.ElementStaticText, SortOrder: 5,
+			{ID: 66, TemplateID: 4, ParentID: nil, ElementType: domain.ElementStaticText, SortOrder: 6,
 				Config: mustMarshal(StaticTextConfig{
 					Text: "{{signer_name}}", FontSize: 10.0,
 					FontStyle: "regular", Alignment: "left",

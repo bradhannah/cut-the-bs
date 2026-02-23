@@ -178,6 +178,10 @@ export function GetApplicationHistory(arg1) {
   return window['go']['main']['App']['GetApplicationHistory'](arg1);
 }
 
+export function GetApplicationPromptValues(arg1, arg2) {
+  return window['go']['main']['App']['GetApplicationPromptValues'](arg1, arg2);
+}
+
 export function GetApplicationStatuses() {
   return window['go']['main']['App']['GetApplicationStatuses']();
 }
@@ -322,6 +326,10 @@ export function OpenFile(arg1) {
   return window['go']['main']['App']['OpenFile'](arg1);
 }
 
+export function OverwriteExport(arg1, arg2) {
+  return window['go']['main']['App']['OverwriteExport'](arg1, arg2);
+}
+
 export function ParseTemplateVariables(arg1) {
   return window['go']['main']['App']['ParseTemplateVariables'](arg1);
 }
@@ -372,6 +380,10 @@ export function ReorderTemplateElements(arg1, arg2, arg3) {
 
 export function ReorderWorkHistory(arg1) {
   return window['go']['main']['App']['ReorderWorkHistory'](arg1);
+}
+
+export function SaveApplicationPromptValues(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SaveApplicationPromptValues'](arg1, arg2, arg3);
 }
 
 export function SearchApplications(arg1) {

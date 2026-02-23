@@ -418,38 +418,116 @@ func (s *TemplateService) ParseTemplateVariables(detail domain.TemplateDetail) d
 
 	for _, el := range detail.Elements {
 		text := extractTextFromConfig(el.Config)
-		if text == "" {
-			continue
+		if text != "" {
+			collectPlaceholdersFromText(text, el.ElementType, &result, seenVars)
 		}
 
-		matches := variablePattern.FindAllStringSubmatch(text, -1)
-		for _, match := range matches {
-			inner := strings.TrimSpace(match[1])
-			if inner == "" {
-				continue
-			}
-
-			if strings.HasPrefix(inner, "prompt:") || strings.HasPrefix(inner, "prompt: ") {
-				promptText := strings.TrimSpace(strings.TrimPrefix(inner, "prompt:"))
-				if promptText != "" {
-					result.Prompts = append(result.Prompts, domain.GuidedPrompt{
-						PromptText: promptText,
-						Source:     el.ElementType,
-					})
-				}
-			} else {
-				if !seenVars[inner] {
-					seenVars[inner] = true
-					result.Variables = append(result.Variables, domain.TemplateVariable{
-						Name:   inner,
-						Source: el.ElementType,
-					})
-				}
-			}
-		}
+		collectParagraphVariablesFromConfig(el, &result, seenVars)
 	}
 
 	return result
+}
+
+func collectPlaceholdersFromText(
+	text string,
+	source string,
+	result *domain.TemplateVariables,
+	seenVars map[string]bool,
+) {
+	matches := variablePattern.FindAllStringSubmatch(text, -1)
+	for _, match := range matches {
+		inner := strings.TrimSpace(match[1])
+		if inner == "" {
+			continue
+		}
+
+		if strings.HasPrefix(inner, "prompt:") || strings.HasPrefix(inner, "prompt: ") {
+			promptText := strings.TrimSpace(strings.TrimPrefix(inner, "prompt:"))
+			if promptText != "" {
+				result.Prompts = append(result.Prompts, domain.GuidedPrompt{
+					PromptText: promptText,
+					Source:     source,
+				})
+			}
+		} else {
+			if !seenVars[inner] {
+				seenVars[inner] = true
+				result.Variables = append(result.Variables, domain.TemplateVariable{
+					Name:   inner,
+					Source: source,
+				})
+			}
+		}
+	}
+}
+
+func collectParagraphVariablesFromConfig(
+	el domain.TemplateElement,
+	result *domain.TemplateVariables,
+	seenVars map[string]bool,
+) {
+	if el.ElementType != domain.ElementParagraph || el.Config == "" || el.Config == "{}" {
+		return
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(el.Config), &parsed); err != nil {
+		return
+	}
+
+	rawSegments, ok := parsed["segments"].([]any)
+	if !ok {
+		return
+	}
+
+	for _, rawSegment := range rawSegments {
+		segment, ok := rawSegment.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		segmentType, _ := segment["type"].(string)
+		switch strings.TrimSpace(segmentType) {
+		case "static":
+			text, _ := segment["text"].(string)
+			collectPlaceholdersFromText(text, el.ElementType, result, seenVars)
+		case "profile", "application":
+			token, _ := segment["token"].(string)
+			token = strings.TrimSpace(token)
+			if token == "" || seenVars[token] {
+				continue
+			}
+			seenVars[token] = true
+			result.Variables = append(result.Variables, domain.TemplateVariable{
+				Name:   token,
+				Source: el.ElementType,
+			})
+		case "adhoc":
+			key, _ := segment["key"].(string)
+			key = strings.TrimSpace(key)
+			promptText, _ := segment["label"].(string)
+			promptText = strings.TrimSpace(promptText)
+			if promptText == "" {
+				promptText = key
+			}
+			if promptText == "" {
+				continue
+			}
+
+			helpText, _ := segment["help_text"].(string)
+			required, _ := segment["required"].(bool)
+			multiline, _ := segment["multiline"].(bool)
+
+			result.Prompts = append(result.Prompts, domain.GuidedPrompt{
+				Key:        key,
+				PromptText: promptText,
+				HelpText:   strings.TrimSpace(helpText),
+				Required:   required,
+				Multiline:  multiline,
+				Source:     el.ElementType,
+			})
+		}
+	}
 }
 
 // ApplySubstitutions replaces all {{variable_name}} and {{prompt: text}}

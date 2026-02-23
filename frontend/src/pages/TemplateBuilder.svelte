@@ -2,15 +2,22 @@
   import { onMount, onDestroy } from "svelte";
   import {
     getDocumentTemplate,
+    updateDocumentTemplate,
     previewTemplate,
     openFile,
     addToast,
+    type DocumentTemplateInput,
   } from "../services/api";
   import {
     currentTemplate,
+    builderReadOnly,
+    setBuilderReadOnly,
     resetBuilderStores,
     loadTemplateIntoStores,
     saveStatus,
+    markSaving,
+    markSaved,
+    markSaveError,
   } from "../stores/templateBuilder";
   import LoadingSpinner from "../components/LoadingSpinner.svelte";
   import Palette from "../components/template/Palette.svelte";
@@ -22,8 +29,19 @@
   let loading = true;
   let error = "";
   let previewing = false;
+  let metaName = "";
+  let metaDescription = "";
+  let loadedTemplateID: number | null = null;
+  let metaDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   $: templateId = params.id ? parseInt(params.id, 10) : null;
+  $: isReadOnly = $builderReadOnly;
+
+  $: if ($currentTemplate && $currentTemplate.id !== loadedTemplateID) {
+    loadedTemplateID = $currentTemplate.id;
+    metaName = $currentTemplate.name;
+    metaDescription = $currentTemplate.description || "";
+  }
 
   onMount(async () => {
     if (!templateId) {
@@ -35,14 +53,29 @@
   });
 
   onDestroy(() => {
+    if (metaDebounceTimer) clearTimeout(metaDebounceTimer);
     resetBuilderStores();
   });
+
+  function builderModeFromHash(): "edit" | "view" {
+    const hash = window.location.hash || "";
+    const queryIndex = hash.indexOf("?");
+    if (queryIndex === -1) {
+      return "edit";
+    }
+
+    const query = hash.slice(queryIndex + 1);
+    const params = new URLSearchParams(query);
+    return params.get("mode") === "view" ? "view" : "edit";
+  }
 
   async function loadTemplate(id: number): Promise<void> {
     loading = true;
     error = "";
     try {
       const detail = await getDocumentTemplate(id);
+      const viewMode = builderModeFromHash() === "view";
+      setBuilderReadOnly(viewMode || detail.is_builtin);
       loadTemplateIntoStores(detail);
     } catch (e: any) {
       error = e?.message || "Failed to load template.";
@@ -62,6 +95,56 @@
       addToast("error", e?.message || "Preview failed.");
     } finally {
       previewing = false;
+    }
+  }
+
+  function onMetaNameInput(): void {
+    if (isReadOnly) return;
+    currentTemplate.update((t) => (t ? { ...t, name: metaName } : t));
+    debounceSaveMetadata();
+  }
+
+  function onMetaDescriptionInput(): void {
+    if (isReadOnly) return;
+    currentTemplate.update((t) => (t ? { ...t, description: metaDescription } : t));
+    debounceSaveMetadata();
+  }
+
+  function debounceSaveMetadata(): void {
+    if (metaDebounceTimer) clearTimeout(metaDebounceTimer);
+    metaDebounceTimer = setTimeout(() => {
+      saveMetadata();
+    }, 350);
+  }
+
+  async function saveMetadata(): Promise<void> {
+    const tmpl = $currentTemplate;
+    if (!tmpl || isReadOnly) return;
+
+    const trimmedName = metaName.trim();
+    if (!trimmedName) {
+      addToast("error", "Template name cannot be empty");
+      return;
+    }
+
+    const input: DocumentTemplateInput = {
+      name: trimmedName,
+      description: metaDescription,
+      template_type: tmpl.template_type,
+      margin_top: tmpl.margin_top,
+      margin_bottom: tmpl.margin_bottom,
+      margin_left: tmpl.margin_left,
+      margin_right: tmpl.margin_right,
+    };
+
+    try {
+      markSaving();
+      const updated = await updateDocumentTemplate(tmpl.id, input);
+      currentTemplate.set(updated);
+      markSaved();
+    } catch (e: any) {
+      markSaveError();
+      addToast("error", e?.message || "Failed to save template metadata");
     }
   }
 </script>
@@ -84,6 +167,9 @@
     {#if $currentTemplate.is_builtin}
       <span class="builtin-badge">Built-in</span>
     {/if}
+    {#if isReadOnly}
+      <span class="readonly-badge">Read-only</span>
+    {/if}
     <span class="header-spacer"></span>
     <button
       class="btn btn-small btn-preview"
@@ -100,6 +186,29 @@
     {:else if $saveStatus === "error"}
       <span class="save-indicator save-error">Save failed</span>
     {/if}
+  </div>
+
+  <div class="meta-editor" class:readonly={isReadOnly}>
+    <div class="meta-field">
+      <label for="tmpl-meta-name">Template Name</label>
+      <input
+        id="tmpl-meta-name"
+        type="text"
+        bind:value={metaName}
+        on:input={onMetaNameInput}
+        disabled={isReadOnly}
+      />
+    </div>
+    <div class="meta-field">
+      <label for="tmpl-meta-description">Description</label>
+      <textarea
+        id="tmpl-meta-description"
+        rows="2"
+        bind:value={metaDescription}
+        on:input={onMetaDescriptionInput}
+        disabled={isReadOnly}
+      ></textarea>
+    </div>
   </div>
 
   <div class="builder-panels">
@@ -188,8 +297,65 @@
     color: #b0d080;
   }
 
+  .readonly-badge {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background-color: #4a3f2a;
+    color: #e8cc88;
+  }
+
   .header-spacer {
     flex: 1;
+  }
+
+  .meta-editor {
+    display: grid;
+    grid-template-columns: 1fr 1.3fr;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding: 10px;
+    border: 1px solid #2a3a4a;
+    border-radius: 6px;
+    background-color: #182535;
+  }
+
+  .meta-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .meta-field label {
+    font-size: 0.74rem;
+    color: #8fa2b7;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }
+
+  .meta-field input,
+  .meta-field textarea {
+    background-color: #1a2a3a;
+    color: #e0e0e0;
+    border: 1px solid #2f4359;
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    resize: vertical;
+  }
+
+  .meta-field input:focus,
+  .meta-field textarea:focus {
+    outline: none;
+    border-color: #4a8af4;
+    box-shadow: 0 0 0 2px rgba(74, 138, 244, 0.15);
+  }
+
+  .meta-editor.readonly .meta-field input,
+  .meta-editor.readonly .meta-field textarea {
+    opacity: 0.75;
   }
 
   .btn-preview {

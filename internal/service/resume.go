@@ -34,6 +34,7 @@ type ExportStore interface {
 	// Export records
 	ListExports(ctx context.Context) ([]domain.ResumeExport, error)
 	CreateExport(ctx context.Context, export domain.ResumeExport) (domain.ResumeExport, error)
+	OverwriteExport(ctx context.Context, exportID int64, export domain.ResumeExport, req domain.ExportRequest) (domain.ResumeExport, error)
 	GetExport(ctx context.Context, id int64) (domain.ResumeExport, error)
 	CreateExportSelections(ctx context.Context, exportID int64, req domain.ExportRequest) error
 }
@@ -350,6 +351,55 @@ func (s *ResumeService) CreateExport(
 	}
 
 	return export, nil
+}
+
+// OverwriteExport regenerates a PDF and overwrites an existing export
+// record and its selection snapshot in-place.
+func (s *ResumeService) OverwriteExport(
+	ctx context.Context,
+	exportID int64,
+	req domain.ExportRequest,
+) (domain.ResumeExport, error) {
+	if exportID == 0 {
+		return domain.ResumeExport{}, fmt.Errorf("export ID is required")
+	}
+	if req.TemplateID == 0 {
+		return domain.ResumeExport{}, fmt.Errorf("template ID is required")
+	}
+
+	tmpl, err := s.store.GetDocumentTemplate(ctx, req.TemplateID)
+	if err != nil {
+		return domain.ResumeExport{}, fmt.Errorf("get template: %w", err)
+	}
+
+	var filePath string
+	if tmpl.TemplateType == domain.TemplateTypeCoverLetter {
+		filePath, err = s.createCoverLetterExport(ctx, req, tmpl)
+	} else {
+		if err := validateExportRequest(req); err != nil {
+			return domain.ResumeExport{}, err
+		}
+		filePath, err = s.createResumeExport(ctx, req, tmpl)
+	}
+	if err != nil {
+		return domain.ResumeExport{}, err
+	}
+
+	var snapshotSummaryID *int64
+	if len(req.SummaryIDs) > 0 {
+		sid := req.SummaryIDs[0]
+		snapshotSummaryID = &sid
+	}
+
+	templateRefID := req.TemplateID
+	return s.store.OverwriteExport(ctx, exportID, domain.ResumeExport{
+		ID:            exportID,
+		TemplateID:    tmpl.Name,
+		TemplateRefID: &templateRefID,
+		FilePath:      filePath,
+		SummaryID:     snapshotSummaryID,
+		LensID:        req.LensID,
+	}, req)
 }
 
 // createResumeExport assembles and renders a resume PDF.

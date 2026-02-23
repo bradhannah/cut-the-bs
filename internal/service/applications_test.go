@@ -18,6 +18,7 @@ type mockApplicationStore struct {
 	history      []domain.StatusChange
 	statusChange domain.StatusChange
 	err          error
+	promptValues map[string]string
 
 	// call tracking
 	createCalls       []domain.ApplicationInput
@@ -28,6 +29,19 @@ type mockApplicationStore struct {
 	searchCalls       []string
 	historyCalls      []int64
 	statusChangeCalls []domain.StatusChange
+	promptGetCalls    []promptValuesGetCall
+	promptSaveCalls   []promptValuesSaveCall
+}
+
+type promptValuesGetCall struct {
+	ApplicationID int64
+	TemplateID    int64
+}
+
+type promptValuesSaveCall struct {
+	ApplicationID int64
+	TemplateID    int64
+	Values        map[string]string
 }
 
 type updateApplicationCall struct {
@@ -106,6 +120,50 @@ func (m *mockApplicationStore) GetApplicationHistory(_ context.Context, appID in
 func (m *mockApplicationStore) CreateStatusChange(_ context.Context, change domain.StatusChange) (domain.StatusChange, error) {
 	m.statusChangeCalls = append(m.statusChangeCalls, change)
 	return m.statusChange, m.err
+}
+
+func (m *mockApplicationStore) GetApplicationPromptValues(
+	_ context.Context,
+	applicationID int64,
+	templateID int64,
+) (map[string]string, error) {
+	m.promptGetCalls = append(m.promptGetCalls, promptValuesGetCall{
+		ApplicationID: applicationID,
+		TemplateID:    templateID,
+	})
+	if m.err != nil {
+		return nil, m.err
+	}
+	if m.promptValues == nil {
+		return map[string]string{}, nil
+	}
+	result := make(map[string]string, len(m.promptValues))
+	for k, v := range m.promptValues {
+		result[k] = v
+	}
+	return result, nil
+}
+
+func (m *mockApplicationStore) SaveApplicationPromptValues(
+	_ context.Context,
+	applicationID int64,
+	templateID int64,
+	values map[string]string,
+) error {
+	copyValues := make(map[string]string, len(values))
+	for k, v := range values {
+		copyValues[k] = v
+	}
+	m.promptSaveCalls = append(m.promptSaveCalls, promptValuesSaveCall{
+		ApplicationID: applicationID,
+		TemplateID:    templateID,
+		Values:        copyValues,
+	})
+	if m.err != nil {
+		return m.err
+	}
+	m.promptValues = copyValues
+	return nil
 }
 
 // =================================================================

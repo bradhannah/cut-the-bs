@@ -166,6 +166,8 @@ func dispatchElement(rc *renderContext, el domain.TemplateElement) error {
 	// Cover letter elements (T049)
 	case domain.ElementBodyText:
 		return renderBodyTextElement(rc, el)
+	case domain.ElementParagraph:
+		return renderParagraphElement(rc, el)
 	case domain.ElementDate:
 		return renderDateElement(rc, el)
 	case domain.ElementGreeting:
@@ -1569,6 +1571,111 @@ func renderBodyTextElement(rc *renderContext, el domain.TemplateElement) error {
 
 	rc.y += cfg.SpaceAfter
 	return nil
+}
+
+// renderParagraphElement renders a cover letter paragraph assembled from
+// ordered paragraph segments.
+func renderParagraphElement(rc *renderContext, el domain.TemplateElement) error {
+	var cfg ParagraphConfig
+	if err := json.Unmarshal([]byte(el.Config), &cfg); err != nil {
+		return fmt.Errorf("parse paragraph config: %w", err)
+	}
+
+	if rc.coverLetterReq == nil {
+		return nil
+	}
+
+	paragraphText := buildParagraphText(cfg, rc.coverLetterReq.SubstitutionMap)
+	if paragraphText == "" {
+		return nil
+	}
+
+	fontSize := cfg.FontSize
+	if fontSize == 0 {
+		fontSize = fontSizeBody
+	}
+
+	if err := setFont(rc.pdf, "LiberationSans-Regular", fontSize); err != nil {
+		return err
+	}
+
+	var err error
+	rc.y, err = renderWrappedText(
+		rc.pdf,
+		paragraphText,
+		rc.marginLeft,
+		rc.y,
+		rc.usableWidth,
+		fontSize,
+		rc.marginBottom,
+		rc.marginTop,
+	)
+	if err != nil {
+		return fmt.Errorf("render paragraph: %w", err)
+	}
+
+	rc.y += cfg.SpaceAfter
+	return nil
+}
+
+func buildParagraphText(cfg ParagraphConfig, subs map[string]string) string {
+	if len(cfg.Segments) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(cfg.Segments))
+	for _, segment := range cfg.Segments {
+		part := resolveParagraphSegment(segment, subs)
+		part = normalizeParagraphSegmentText(part, segment.Type == "static")
+		if part == "" {
+			continue
+		}
+		parts = append(parts, part)
+	}
+
+	return strings.TrimSpace(strings.Join(parts, ""))
+}
+
+func resolveParagraphSegment(segment ParagraphSegmentConfig, subs map[string]string) string {
+	switch segment.Type {
+	case "static":
+		return service.ApplySubstitutions(segment.Text, subs)
+	case "profile", "application":
+		return substitutionValue(subs, segment.Token)
+	case "adhoc":
+		if value := substitutionValue(subs, segment.Key); value != "" {
+			return value
+		}
+		if value := substitutionValue(subs, "prompt:"+strings.TrimSpace(segment.Key)); value != "" {
+			return value
+		}
+		if value := substitutionValue(subs, "prompt:"+strings.TrimSpace(segment.Label)); value != "" {
+			return value
+		}
+		return ""
+	default:
+		return service.ApplySubstitutions(segment.Text, subs)
+	}
+}
+
+func substitutionValue(subs map[string]string, key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" || subs == nil {
+		return ""
+	}
+	return strings.TrimSpace(subs[key])
+}
+
+func normalizeParagraphSegmentText(text string, preserveEdges bool) string {
+	if text == "" {
+		return ""
+	}
+	replacer := strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ", "\t", " ")
+	cleaned := replacer.Replace(text)
+	if preserveEdges {
+		return cleaned
+	}
+	return strings.TrimSpace(cleaned)
 }
 
 // renderDateElement renders the current date on the cover letter.

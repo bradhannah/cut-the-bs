@@ -273,14 +273,6 @@ func TestWorkflow_CreateApplication(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()
 
-	// Create a cover letter.
-	cl, err := store.CreateCoverLetter(ctx, domain.CoverLetterInput{
-		Title:    "Acme Application Cover Letter",
-		BodyText: "Dear Hiring Manager, I am writing to express my interest...",
-	})
-	require.NoError(t, err)
-	assert.NotZero(t, cl.ID)
-
 	// Create an export record (simulate having generated a PDF).
 	export, err := store.CreateExport(ctx, domain.ResumeExport{
 		TemplateID: "professional",
@@ -288,21 +280,25 @@ func TestWorkflow_CreateApplication(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Create application linked to export and cover letter.
+	coverTemplateID := int64(3) // built-in Formal template
+
+	// Create application linked to resume export and cover letter template.
 	app, err := store.CreateApplication(ctx, domain.ApplicationInput{
-		CompanyName:    "Acme Corp",
-		PositionTitle:  "Senior Software Engineer",
-		DateApplied:    "2025-01-15",
-		FitIndicator:   "strong",
-		ResumeExportID: &export.ID,
-		CoverLetterID:  &cl.ID,
-		Notes:          "Referred by John",
+		CompanyName:               "Acme Corp",
+		PositionTitle:             "Senior Software Engineer",
+		DateApplied:               "2025-01-15",
+		FitIndicator:              "strong",
+		ResumeExportID:            &export.ID,
+		CoverLetterTemplateID:     &coverTemplateID,
+		CoverLetterLatestExportID: &export.ID,
+		Notes:                     "Referred by John",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "Acme Corp", app.CompanyName)
 	assert.Equal(t, domain.StatusApplied, app.Status)
 	assert.Equal(t, &export.ID, app.ResumeExportID)
-	assert.Equal(t, &cl.ID, app.CoverLetterID)
+	assert.Equal(t, &coverTemplateID, app.CoverLetterTemplateID)
+	assert.Equal(t, &export.ID, app.CoverLetterLatestExportID)
 }
 
 func TestWorkflow_JSONExportImportRoundtrip(t *testing.T) {
@@ -418,7 +414,7 @@ func TestWorkflow_JSONExportImportRoundtrip(t *testing.T) {
 	var exported domain.ExportData
 	require.NoError(t, json.Unmarshal(jsonData, &exported))
 
-	assert.Equal(t, 7, exported.SchemaVersion)
+	assert.Equal(t, 11, exported.SchemaVersion)
 	assert.NotEmpty(t, exported.ExportedAt)
 	assert.Equal(t, "Jane Smith", exported.Profile.FullName)
 	assert.Len(t, exported.ProfileLinks, 1)
@@ -624,20 +620,23 @@ func TestWorkflow_FullEndToEnd(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	cl, err := store.CreateCoverLetter(ctx, domain.CoverLetterInput{
+	_, err = store.CreateCoverLetter(ctx, domain.CoverLetterInput{
 		Title:    "BigTech Cover Letter",
 		BodyText: "Dear Hiring Manager, I am excited to apply...",
 	})
 	require.NoError(t, err)
 
+	coverTemplateID := int64(3) // built-in Formal template
+
 	app, err := store.CreateApplication(ctx, domain.ApplicationInput{
-		CompanyName:    "BigTech Inc",
-		PositionTitle:  "Staff Platform Engineer",
-		DateApplied:    "2025-06-15",
-		FitIndicator:   "strong",
-		ResumeExportID: &export.ID,
-		CoverLetterID:  &cl.ID,
-		Notes:          "Internal referral from Dave",
+		CompanyName:               "BigTech Inc",
+		PositionTitle:             "Staff Platform Engineer",
+		DateApplied:               "2025-06-15",
+		FitIndicator:              "strong",
+		ResumeExportID:            &export.ID,
+		CoverLetterTemplateID:     &coverTemplateID,
+		CoverLetterLatestExportID: &export.ID,
+		Notes:                     "Internal referral from Dave",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, domain.StatusApplied, app.Status)

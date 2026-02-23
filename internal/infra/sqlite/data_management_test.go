@@ -258,7 +258,7 @@ func TestImportAllData_OverwritesExistingUserTemplates(t *testing.T) {
 
 	// Import data with a different user template.
 	importData := domain.ExportData{
-		SchemaVersion: 7,
+		SchemaVersion: 11,
 		ExportedAt:    "2026-01-01T00:00:00Z",
 		Profile: domain.UserProfile{
 			ID:       1,
@@ -324,7 +324,7 @@ func TestImportAllData_EmptyTemplates(t *testing.T) {
 
 	// Import data with no user templates.
 	importData := domain.ExportData{
-		SchemaVersion: 7,
+		SchemaVersion: 11,
 		ExportedAt:    "2026-01-01T00:00:00Z",
 		Profile: domain.UserProfile{
 			ID:       1,

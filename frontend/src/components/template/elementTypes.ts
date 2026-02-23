@@ -142,6 +142,18 @@ export const defaultConfigs: Record<string, string> = {
     line_spacing: 1.15,
     space_after: 12,
   }),
+  paragraph: JSON.stringify({
+    font_size: 11,
+    line_spacing: 1.15,
+    space_after: 12,
+    segments: [
+      { type: "static", text: "I am excited to apply for the " },
+      { type: "application", token: "position_title" },
+      { type: "static", text: " role at " },
+      { type: "application", token: "company_name" },
+      { type: "static", text: "." },
+    ],
+  }),
   date: JSON.stringify({
     font_size: 11,
     format: "January 2, 2006",
@@ -190,6 +202,7 @@ export const elementLabels: Record<string, string> = {
   cert_name: "Certification Name",
   cert_detail: "Certification Detail",
   body_text: "Body Text",
+  paragraph: "Paragraph",
   date: "Date",
   greeting: "Greeting",
   closing: "Closing",
@@ -222,6 +235,7 @@ export const elementIcons: Record<string, string> = {
   cert_name: "\u{1F4DC}",
   cert_detail: "\u{1F4DC}",
   body_text: "\u{1F4DD}",
+  paragraph: "\u{00B6}",
   date: "\u{1F4C5}",
   greeting: "\u{1F44B}",
   closing: "\u{270D}",
@@ -234,6 +248,7 @@ export const repeatableElementTypes = new Set([
   "horizontal_rule",
   "spacer",
   "static_text",
+  "paragraph",
 ]);
 
 // Loop container types.
@@ -246,17 +261,33 @@ export const loopElementTypes = new Set([
 // Valid children per loop type (mirrors Go domain.ValidLoopChildren).
 export const validLoopChildren: Record<string, Set<string>> = {
   work_history_loop: new Set([
-    "work_title", "work_employer", "work_dates",
-    "work_summary", "work_bullets", "work_outcomes",
-    "section_heading", "horizontal_rule", "spacer", "static_text",
+    "work_title",
+    "work_employer",
+    "work_dates",
+    "work_summary",
+    "work_bullets",
+    "work_outcomes",
+    "section_heading",
+    "horizontal_rule",
+    "spacer",
+    "static_text",
   ]),
   education_loop: new Set([
-    "edu_credential", "edu_institution", "edu_date",
-    "section_heading", "horizontal_rule", "spacer", "static_text",
+    "edu_credential",
+    "edu_institution",
+    "edu_date",
+    "section_heading",
+    "horizontal_rule",
+    "spacer",
+    "static_text",
   ]),
   certifications_loop: new Set([
-    "cert_name", "cert_detail",
-    "section_heading", "horizontal_rule", "spacer", "static_text",
+    "cert_name",
+    "cert_detail",
+    "section_heading",
+    "horizontal_rule",
+    "spacer",
+    "static_text",
   ]),
 };
 
@@ -315,6 +346,7 @@ export const resumeElementTypes = new Set([
 export const coverLetterElementTypes = new Set([
   ...sharedTypes,
   "body_text",
+  "paragraph",
   "date",
   "greeting",
   "closing",

@@ -7,6 +7,7 @@
     canvasElements,
     selectedElementId,
     currentTemplate,
+    builderReadOnly,
     markSaving,
     markSaved,
     markSaveError,
@@ -157,6 +158,7 @@
   }
 
   function handleNativeDragOver(e: DragEvent): void {
+    if ($builderReadOnly) return;
     if (!canvasZoneEl || !isTemplateElementDrag(e)) return;
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
@@ -164,6 +166,7 @@
   }
 
   function handleNativeDragLeave(e: DragEvent): void {
+    if ($builderReadOnly) return;
     const next = e.relatedTarget;
     if (canvasZoneEl && next instanceof Node && canvasZoneEl.contains(next)) {
       return;
@@ -172,6 +175,7 @@
   }
 
   async function handleNativeDrop(e: DragEvent): Promise<void> {
+    if ($builderReadOnly) return;
     const elementType = getDraggedElementType(e);
     if (!elementType || !canvasZoneEl) return;
 
@@ -250,12 +254,14 @@
   async function handleConsider(
     e: CustomEvent<{ items: CanvasDndItem[]; info: { source: string; trigger: string } }>
   ): Promise<void> {
+    if ($builderReadOnly) return;
     dndItems = normalizeDndItems(e.detail.items);
   }
 
   async function handleFinalize(
     e: CustomEvent<{ items: CanvasDndItem[]; info: { source: string; trigger: string } }>
   ): Promise<void> {
+    if ($builderReadOnly) return;
     const items = normalizeDndItems(e.detail.items);
     dndItems = items;
 
@@ -304,6 +310,7 @@
   }
 
   async function handleDeleteElement(e: CustomEvent<{ id: number }>): Promise<void> {
+    if ($builderReadOnly) return;
     const elementId = e.detail.id;
     try {
       markSaving();
@@ -337,12 +344,14 @@
   {/if}
   <div
     class="canvas-elements"
+    class:readonly={$builderReadOnly}
     bind:this={canvasZoneEl}
     use:dndzone={{
       items: dndItems,
       type: "template-element",
       dropTargetStyle: { outline: "2px dashed #4a8af4", outlineOffset: "-2px" },
       dropFromOthersDisabled: true,
+      dragDisabled: $builderReadOnly,
       centreDraggedOnCursor: false,
       useCursorForDetection: true,
     }}
@@ -361,6 +370,7 @@
           element={getElement(item.id)}
           children={loopElementTypes.has(getElement(item.id).element_type) ? childrenOf(item.id) : []}
           selected={$selectedElementId === item.id}
+          readOnly={$builderReadOnly}
           on:select={handleSelectElement}
           on:delete={handleDeleteElement}
         />
@@ -413,6 +423,10 @@
     min-height: 220px;
     height: 100%;
     overflow-y: auto;
+  }
+
+  .canvas-elements.readonly {
+    opacity: 0.95;
   }
 
   .canvas-placeholder-block {

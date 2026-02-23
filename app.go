@@ -728,6 +728,15 @@ func (a *App) CreateExport(req domain.ExportRequest) (domain.ResumeExport, error
 	return result, err
 }
 
+// OverwriteExport regenerates and overwrites an existing export in-place.
+func (a *App) OverwriteExport(exportID int64, req domain.ExportRequest) (domain.ResumeExport, error) {
+	result, err := a.resumeSvc.OverwriteExport(a.ctx, exportID, req)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return result, err
+}
+
 // ListExports returns all previous export records.
 func (a *App) ListExports() ([]domain.ResumeExport, error) {
 	return a.resumeSvc.ListExports(a.ctx)
@@ -882,6 +891,22 @@ func (a *App) GetApplicationStatuses() []string {
 // GetFitIndicators returns the fixed list of fit indicator values.
 func (a *App) GetFitIndicators() []string {
 	return a.applicationSvc.GetFitIndicators()
+}
+
+// GetApplicationPromptValues returns saved cover-letter prompt values
+// for an application+template pair.
+func (a *App) GetApplicationPromptValues(applicationID int64, templateID int64) (map[string]string, error) {
+	return a.applicationSvc.GetApplicationPromptValues(a.ctx, applicationID, templateID)
+}
+
+// SaveApplicationPromptValues replaces saved cover-letter prompt values
+// for an application+template pair.
+func (a *App) SaveApplicationPromptValues(applicationID int64, templateID int64, values map[string]string) error {
+	err := a.applicationSvc.SaveApplicationPromptValues(a.ctx, applicationID, templateID, values)
+	if err == nil {
+		a.emitAutosave()
+	}
+	return err
 }
 
 // =================================================================

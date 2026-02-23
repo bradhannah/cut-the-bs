@@ -103,6 +103,12 @@ func (s *Store) ExportAllData(ctx context.Context) (domain.ExportData, error) {
 		return domain.ExportData{}, fmt.Errorf("export: applications: %w", err)
 	}
 
+	// Application prompt values
+	data.ApplicationPromptValues, err = s.exportApplicationPromptValues(ctx)
+	if err != nil {
+		return domain.ExportData{}, fmt.Errorf("export: application_prompt_values: %w", err)
+	}
+
 	// Status changes (all across all applications)
 	data.StatusChanges, err = s.exportAllStatusChanges(ctx)
 	if err != nil {
@@ -216,6 +222,7 @@ func (s *Store) ImportAllData(ctx context.Context, data domain.ExportData) error
 	// Truncate all tables in reverse dependency order.
 	// Template tables are handled separately below to preserve built-in templates.
 	tables := []string{
+		"application_prompt_value",
 		"status_history",
 		"job_application",
 		"cover_letter",
@@ -365,6 +372,13 @@ func (s *Store) ImportAllData(ctx context.Context, data domain.ExportData) error
 	// Insert applications
 	for _, app := range data.Applications {
 		if err := s.importApplication(ctx, tx, app); err != nil {
+			return err
+		}
+	}
+
+	// Insert application prompt values
+	for _, item := range data.ApplicationPromptValues {
+		if err := s.importApplicationPromptValue(ctx, tx, item); err != nil {
 			return err
 		}
 	}
@@ -742,12 +756,14 @@ func (s *Store) importApplication(ctx context.Context, tx *sql.Tx, app domain.Jo
 	}
 	_, err := tx.ExecContext(ctx,
 		`INSERT INTO job_application
-		 (id, company_name, position_title, date_applied, status,
-		  fit_indicator, resume_export_id, cover_letter_id, notes,
+		 (id, company_name, position_title, job_posting_url, date_applied, status,
+		  fit_indicator, resume_export_id, cover_letter_template_id,
+		  cover_letter_latest_export_id, notes,
 		  created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		app.ID, app.CompanyName, app.PositionTitle, app.DateApplied,
-		app.Status, fitIndicator, app.ResumeExportID, app.CoverLetterID,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		app.ID, app.CompanyName, app.PositionTitle, app.JobPostingURL, app.DateApplied,
+		app.Status, fitIndicator, app.ResumeExportID,
+		app.CoverLetterTemplateID, app.CoverLetterLatestExportID,
 		app.Notes, app.CreatedAt, app.UpdatedAt,
 	)
 	if err != nil {

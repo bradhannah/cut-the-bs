@@ -4,7 +4,6 @@
   import {
     listDocumentTemplates,
     createDocumentTemplate,
-    updateDocumentTemplate,
     deleteDocumentTemplate,
     duplicateDocumentTemplate,
     addToast,
@@ -17,25 +16,26 @@
   let templates: DocumentTemplate[] = [];
   let loading = true;
 
-  // --- Create dialog ---
   let showCreateDialog = false;
   let newName = "";
   let newType = "resume";
+  let newDescription = "";
   let creating = false;
 
-  // --- Inline rename ---
-  let editingId: number | null = null;
-  let editingName = "";
-
-  // --- Duplicate dialog ---
   let showDuplicateDialog = false;
   let duplicateName = "";
   let duplicatingTemplate: DocumentTemplate | null = null;
   let duplicating = false;
 
-  // --- Delete confirmation ---
   let showDeleteDialog = false;
   let deletingTemplate: DocumentTemplate | null = null;
+
+  $: resumeTemplates = templates.filter((t) => t.template_type === "resume");
+  $: coverLetterTemplates = templates.filter(
+    (t) => t.template_type === "cover_letter"
+  );
+  $: resumeCount = resumeTemplates.length;
+  $: coverLetterCount = coverLetterTemplates.length;
 
   onMount(async () => {
     await loadTemplates();
@@ -52,9 +52,18 @@
     }
   }
 
+  function openTemplateBuilder(tmpl: DocumentTemplate): void {
+    if (tmpl.is_builtin) {
+      push(`/templates/${tmpl.id}/builder?mode=view`);
+      return;
+    }
+    push(`/templates/${tmpl.id}/builder`);
+  }
+
   function openCreateDialog(): void {
     newName = "";
     newType = "resume";
+    newDescription = "";
     showCreateDialog = true;
   }
 
@@ -63,15 +72,17 @@
   }
 
   async function handleCreate(): Promise<void> {
-    if (!newName.trim()) {
+    const trimmedName = newName.trim();
+    if (!trimmedName) {
       addToast("error", "Template name is required");
       return;
     }
+
     creating = true;
     try {
       const input: DocumentTemplateInput = {
-        name: newName.trim(),
-        description: "",
+        name: trimmedName,
+        description: newDescription.trim(),
         template_type: newType,
         margin_top: 54,
         margin_bottom: 54,
@@ -145,56 +156,6 @@
     }
   }
 
-  function startRename(tmpl: DocumentTemplate): void {
-    editingId = tmpl.id;
-    editingName = tmpl.name;
-  }
-
-  function cancelRename(): void {
-    editingId = null;
-    editingName = "";
-  }
-
-  async function saveRename(tmpl: DocumentTemplate): Promise<void> {
-    const trimmed = editingName.trim();
-    if (!trimmed) {
-      addToast("error", "Template name cannot be empty");
-      return;
-    }
-    if (trimmed === tmpl.name) {
-      cancelRename();
-      return;
-    }
-    try {
-      const input: DocumentTemplateInput = {
-        name: trimmed,
-        description: tmpl.description || "",
-        template_type: tmpl.template_type,
-        margin_top: tmpl.margin_top,
-        margin_bottom: tmpl.margin_bottom,
-        margin_left: tmpl.margin_left,
-        margin_right: tmpl.margin_right,
-      };
-      await updateDocumentTemplate(tmpl.id, input);
-      templates = templates.map((t) =>
-        t.id === tmpl.id ? { ...t, name: trimmed } : t
-      );
-      cancelRename();
-    } catch (e: any) {
-      addToast("error", e?.message || "Failed to rename template");
-    }
-  }
-
-  function handleRenameKeydown(e: KeyboardEvent, tmpl: DocumentTemplate): void {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      saveRename(tmpl);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      cancelRename();
-    }
-  }
-
   function handleKeydown(e: KeyboardEvent): void {
     if (showCreateDialog && e.key === "Escape") {
       closeCreateDialog();
@@ -218,10 +179,14 @@
 
 <div class="template-list-page">
   <div class="page-header">
-    <h2>Templates</h2>
-    <button class="btn btn-primary" on:click={openCreateDialog}>
-      + New Template
-    </button>
+    <div>
+      <h2>Templates</h2>
+      <p class="page-subtitle">
+        Built-ins are view-only. Duplicate built-ins to create editable copies.
+        Rename and edit descriptions from the template editor header.
+      </p>
+    </div>
+    <button class="btn btn-primary" on:click={openCreateDialog}>+ New Template</button>
   </div>
 
   {#if loading}
@@ -233,75 +198,138 @@
       <p>No templates yet. Create one to get started.</p>
     </div>
   {:else}
-    <div class="template-grid">
-      {#each templates as tmpl (tmpl.id)}
-        <div class="template-card" class:builtin={tmpl.is_builtin}>
-          <div class="card-header">
-            <h3 class="card-title">
-              {#if editingId === tmpl.id}
-                <input
-                  class="rename-input"
-                  type="text"
-                  bind:value={editingName}
-                  on:keydown={(e) => handleRenameKeydown(e, tmpl)}
-                  on:blur={() => saveRename(tmpl)}
-                  maxlength="100"
-                  autofocus
-                />
-              {:else}
-                <a href={"#/templates/" + tmpl.id + "/builder"}>{tmpl.name}</a>
-              {/if}
-            </h3>
-            <div class="card-badges">
-              <span class="type-badge">{tmpl.template_type}</span>
-              {#if tmpl.is_builtin}
-                <span class="builtin-badge">Built-in</span>
-              {/if}
-            </div>
-          </div>
-          {#if tmpl.description}
-            <p class="card-description">{tmpl.description}</p>
-          {/if}
-          <div class="card-meta">
-            <span class="meta-date">Updated {formatTimestamp(tmpl.updated_at)}</span>
-          </div>
-          <div class="card-actions">
-            <a
-              href={"#/templates/" + tmpl.id + "/builder"}
-              class="btn btn-small btn-primary"
-            >
-              Edit
-            </a>
-            {#if !tmpl.is_builtin}
-              <button
-                class="btn btn-small btn-ghost"
-                on:click={() => startRename(tmpl)}
-              >
-                Rename
-              </button>
-            {/if}
-            <button
-              class="btn btn-small btn-ghost"
-              on:click={() => openDuplicateDialog(tmpl)}
-            >
-              Duplicate
-            </button>
-            {#if !tmpl.is_builtin}
-              <button
-                class="btn btn-small btn-danger"
-                on:click={() => confirmDelete(tmpl)}
-              >
-                Delete
-              </button>
-            {/if}
-          </div>
-        </div>
-      {/each}
+    <div class="counts-row">
+      <span class="count-pill">Resume: {resumeCount}</span>
+      <span class="count-pill">Cover Letter: {coverLetterCount}</span>
+      <span class="count-pill">Total: {templates.length}</span>
     </div>
+
+    <section class="template-section">
+      <div class="section-header">
+        <h3>Resume Templates</h3>
+        <span class="section-count">{resumeCount}</span>
+      </div>
+      {#if resumeTemplates.length === 0}
+        <p class="section-empty">No resume templates yet.</p>
+      {:else}
+        <div class="template-table-wrap">
+          <table class="template-table">
+            <colgroup>
+              <col class="col-name" />
+              <col class="col-description" />
+              <col class="col-updated" />
+              <col class="col-access" />
+              <col class="col-actions" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Updated</th>
+                <th>Access</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each resumeTemplates as tmpl (tmpl.id)}
+                <tr class:builtin-row={tmpl.is_builtin}>
+                  <td><div class="tmpl-name">{tmpl.name}</div></td>
+                  <td><span class="tmpl-description">{tmpl.description || "-"}</span></td>
+                  <td><span class="tmpl-date">{formatTimestamp(tmpl.updated_at)}</span></td>
+                  <td>
+                    {#if tmpl.is_builtin}
+                      <span class="access-badge builtin">Built-in (Read-only)</span>
+                    {:else}
+                      <span class="access-badge custom">Editable</span>
+                    {/if}
+                  </td>
+                  <td>
+                    <div class="row-actions">
+                      <button class="btn btn-small btn-primary" on:click={() => openTemplateBuilder(tmpl)}>
+                        {tmpl.is_builtin ? "View" : "Edit"}
+                      </button>
+                      <button class="btn btn-small btn-ghost" on:click={() => openDuplicateDialog(tmpl)}>
+                        Duplicate
+                      </button>
+                      {#if !tmpl.is_builtin}
+                        <button class="btn btn-small btn-danger" on:click={() => confirmDelete(tmpl)}>
+                          Delete
+                        </button>
+                      {/if}
+                    </div>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
+    </section>
+
+    <section class="template-section">
+      <div class="section-header">
+        <h3>Cover Letter Templates</h3>
+        <span class="section-count">{coverLetterCount}</span>
+      </div>
+      {#if coverLetterTemplates.length === 0}
+        <p class="section-empty">No cover letter templates yet.</p>
+      {:else}
+        <div class="template-table-wrap">
+          <table class="template-table">
+            <colgroup>
+              <col class="col-name" />
+              <col class="col-description" />
+              <col class="col-updated" />
+              <col class="col-access" />
+              <col class="col-actions" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Updated</th>
+                <th>Access</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each coverLetterTemplates as tmpl (tmpl.id)}
+                <tr class:builtin-row={tmpl.is_builtin}>
+                  <td><div class="tmpl-name">{tmpl.name}</div></td>
+                  <td><span class="tmpl-description">{tmpl.description || "-"}</span></td>
+                  <td><span class="tmpl-date">{formatTimestamp(tmpl.updated_at)}</span></td>
+                  <td>
+                    {#if tmpl.is_builtin}
+                      <span class="access-badge builtin">Built-in (Read-only)</span>
+                    {:else}
+                      <span class="access-badge custom">Editable</span>
+                    {/if}
+                  </td>
+                  <td>
+                    <div class="row-actions">
+                      <button class="btn btn-small btn-primary" on:click={() => openTemplateBuilder(tmpl)}>
+                        {tmpl.is_builtin ? "View" : "Edit"}
+                      </button>
+                      <button class="btn btn-small btn-ghost" on:click={() => openDuplicateDialog(tmpl)}>
+                        Duplicate
+                      </button>
+                      {#if !tmpl.is_builtin}
+                        <button class="btn btn-small btn-danger" on:click={() => confirmDelete(tmpl)}>
+                          Delete
+                        </button>
+                      {/if}
+                    </div>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
+    </section>
   {/if}
 </div>
 
-<!-- Create template dialog -->
 {#if showCreateDialog}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <div class="dialog-overlay" on:click|self={closeCreateDialog}>
@@ -320,6 +348,17 @@
           />
         </div>
         <div class="form-field">
+          <label class="form-label" for="tmpl-desc">Description</label>
+          <textarea
+            id="tmpl-desc"
+            class="form-input"
+            rows="3"
+            bind:value={newDescription}
+            placeholder="Optional template description"
+            maxlength="300"
+          ></textarea>
+        </div>
+        <div class="form-field">
           <label class="form-label" for="tmpl-type">Type</label>
           <select id="tmpl-type" class="form-input" bind:value={newType}>
             <option value="resume">Resume</option>
@@ -328,9 +367,7 @@
         </div>
       </div>
       <div class="dialog-actions">
-        <button class="btn btn-cancel" on:click={closeCreateDialog}>
-          Cancel
-        </button>
+        <button class="btn btn-cancel" on:click={closeCreateDialog}>Cancel</button>
         <button
           class="btn btn-primary"
           on:click={handleCreate}
@@ -343,7 +380,6 @@
   </div>
 {/if}
 
-<!-- Duplicate template dialog -->
 {#if showDuplicateDialog}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <div class="dialog-overlay" on:click|self={closeDuplicateDialog}>
@@ -363,9 +399,7 @@
         </div>
       </div>
       <div class="dialog-actions">
-        <button class="btn btn-cancel" on:click={closeDuplicateDialog}>
-          Cancel
-        </button>
+        <button class="btn btn-cancel" on:click={closeDuplicateDialog}>Cancel</button>
         <button
           class="btn btn-primary"
           on:click={handleDuplicate}
@@ -378,7 +412,6 @@
   </div>
 {/if}
 
-<!-- Delete confirmation dialog -->
 {#if showDeleteDialog && deletingTemplate}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <div class="dialog-overlay" on:click|self={closeDeleteDialog}>
@@ -386,17 +419,13 @@
       <h3 class="dialog-title">Delete Template</h3>
       <div class="dialog-body">
         <p class="confirm-text">
-          Are you sure you want to delete <strong>{deletingTemplate.name}</strong>?
-          This will also delete all elements in the template. This action cannot be undone.
+          Delete <strong>{deletingTemplate.name}</strong>? This also deletes all
+          template elements and cannot be undone.
         </p>
       </div>
       <div class="dialog-actions">
-        <button class="btn btn-cancel" on:click={closeDeleteDialog}>
-          Cancel
-        </button>
-        <button class="btn btn-danger" on:click={handleDelete}>
-          Delete
-        </button>
+        <button class="btn btn-cancel" on:click={closeDeleteDialog}>Cancel</button>
+        <button class="btn btn-danger" on:click={handleDelete}>Delete</button>
       </div>
     </div>
   </div>
@@ -404,20 +433,29 @@
 
 <style>
   .template-list-page {
-    max-width: 900px;
+    max-width: 1100px;
   }
 
   .page-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    margin-bottom: 24px;
+    margin-bottom: 16px;
+    gap: 14px;
   }
 
   .page-header h2 {
     margin: 0;
-    font-size: 1.3rem;
+    font-size: 1.32rem;
     color: #e0e0e0;
+  }
+
+  .page-subtitle {
+    margin: 6px 0 0;
+    color: #7a8a9a;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    max-width: 700px;
   }
 
   .loading-container {
@@ -432,108 +470,164 @@
     color: #7a8a9a;
   }
 
-  /* --- Template grid --- */
-  .template-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 16px;
-  }
-
-  .template-card {
-    background-color: #1e2d3d;
-    border: 1px solid #2a3a4a;
-    border-radius: 6px;
-    padding: 16px;
+  .counts-row {
     display: flex;
-    flex-direction: column;
     gap: 8px;
-    transition: border-color 0.15s;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
   }
 
-  .template-card:hover {
-    border-color: #3a4a5a;
+  .template-section {
+    margin-bottom: 18px;
   }
 
-  .template-card.builtin {
-    border-left: 3px solid #3a4a2a;
-  }
-
-  .card-header {
+  .section-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    margin-bottom: 8px;
   }
 
-  .card-title {
+  .section-header h3 {
     margin: 0;
-    font-size: 1rem;
-    font-weight: 600;
+    color: #c9d9ec;
+    font-size: 0.95rem;
+    letter-spacing: 0.02em;
   }
 
-  .card-title a {
-    color: #e0e0e0;
-    text-decoration: none;
+  .section-count {
+    font-size: 0.72rem;
+    color: #92a6bb;
+    border: 1px solid #2f4459;
+    border-radius: 999px;
+    padding: 3px 8px;
+    background-color: #1a2534;
   }
 
-  .card-title a:hover {
-    color: #4a8af4;
+  .section-empty {
+    margin: 0;
+    color: #77899d;
+    font-size: 0.82rem;
+    padding: 10px 0 4px;
   }
 
-  .rename-input {
+  .count-pill {
+    font-size: 0.74rem;
+    color: #9cb0c5;
+    border: 1px solid #2a3a4a;
+    border-radius: 999px;
+    padding: 3px 10px;
+    background: #1a2534;
+  }
+
+  .template-table-wrap {
+    border: 1px solid #2a3a4a;
+    border-radius: 8px;
+    overflow: auto;
+    background-color: #1e2d3d;
+  }
+
+  .template-table {
     width: 100%;
-    padding: 2px 6px;
-    background-color: #1b2636;
-    border: 1px solid #4a8af4;
-    border-radius: 3px;
-    color: #e0e0e0;
-    font-size: 1rem;
-    font-weight: 600;
-    outline: none;
+    min-width: 880px;
+    border-collapse: collapse;
+    table-layout: fixed;
   }
 
-  .card-badges {
+  .template-table .col-name {
+    width: 26%;
+  }
+
+  .template-table .col-description {
+    width: 34%;
+  }
+
+  .template-table .col-updated {
+    width: 15%;
+  }
+
+  .template-table .col-access {
+    width: 12%;
+  }
+
+  .template-table .col-actions {
+    width: 13%;
+  }
+
+  .template-table th {
+    text-align: left;
+    color: #8ea2b8;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+    padding: 10px 12px;
+    border-bottom: 1px solid #2a3a4a;
+    background-color: #1a2534;
+    white-space: nowrap;
+  }
+
+  .template-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #25384b;
+    vertical-align: middle;
+  }
+
+  .template-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .template-table tbody tr:hover {
+    background-color: #1b2a3b;
+  }
+
+  .template-table tr.builtin-row {
+    background-color: rgba(58, 74, 42, 0.1);
+  }
+
+  .tmpl-name {
+    color: #dce5f0;
+    font-size: 0.89rem;
+    font-weight: 600;
+  }
+
+  .tmpl-description {
+    color: #9bb0c4;
+    font-size: 0.79rem;
+    line-height: 1.3;
+  }
+
+  .tmpl-date {
+    color: #8196ab;
+    font-size: 0.76rem;
+  }
+
+  .access-badge {
+    font-size: 0.7rem;
+    border-radius: 999px;
+    padding: 3px 9px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+
+  .access-badge.builtin {
+    color: #c5dd9e;
+    border-color: #4d6436;
+    background-color: rgba(77, 100, 54, 0.18);
+  }
+
+  .access-badge.custom {
+    color: #8dc5ff;
+    border-color: #345e8c;
+    background-color: rgba(52, 94, 140, 0.18);
+  }
+
+  .row-actions {
     display: flex;
     gap: 6px;
-    flex-shrink: 0;
+    flex-wrap: wrap;
   }
 
-  .type-badge {
-    font-size: 0.7rem;
-    padding: 2px 6px;
-    border-radius: 3px;
-    background-color: #2a3a4a;
-    color: #c0d0e0;
-    text-transform: capitalize;
-  }
-
-  .builtin-badge {
-    font-size: 0.7rem;
-    padding: 2px 6px;
-    border-radius: 3px;
-    background-color: #3a4a2a;
-    color: #b0d080;
-  }
-
-  .card-description {
-    font-size: 0.85rem;
-    color: #7a8a9a;
-    margin: 0;
-    line-height: 1.4;
-  }
-
-  .card-meta {
-    font-size: 0.75rem;
-    color: #5a6a7a;
-  }
-
-  .card-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 4px;
-  }
-
-  /* --- Button styles --- */
   .btn {
     display: inline-flex;
     align-items: center;
@@ -596,13 +690,9 @@
     color: #e0e0e0;
   }
 
-  /* --- Dialog --- */
   .dialog-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    inset: 0;
     background-color: rgba(0, 0, 0, 0.6);
     display: flex;
     align-items: center;
@@ -615,7 +705,7 @@
     border: 1px solid #2a3a4a;
     border-radius: 8px;
     padding: 24px;
-    width: 400px;
+    width: 420px;
     max-width: 90vw;
   }
 
@@ -644,6 +734,7 @@
   }
 
   .form-input {
+    min-height: 42px;
     padding: 8px 10px;
     background-color: #1b2636;
     border: 1px solid #2a3a4a;
@@ -652,10 +743,16 @@
     font-size: 0.9rem;
     outline: none;
     transition: border-color 0.15s;
+    font-family: inherit;
   }
 
   .form-input:focus {
     border-color: #4a8af4;
+  }
+
+  textarea.form-input {
+    min-height: 90px;
+    resize: vertical;
   }
 
   .dialog-actions {

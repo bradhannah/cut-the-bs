@@ -1,7 +1,11 @@
 <script lang="ts">
   // Palette.svelte — T029
   // Draggable element types organized by category.
-  import { currentTemplate, canvasElements } from "../../stores/templateBuilder";
+  import {
+    currentTemplate,
+    canvasElements,
+    builderReadOnly,
+  } from "../../stores/templateBuilder";
   import {
     elementLabels,
     elementIcons,
@@ -73,7 +77,7 @@
         makeItem("recipient_address"),
         makeItem("date"),
         makeItem("greeting"),
-        makeItem("body_text"),
+        makeItem("paragraph"),
         makeItem("closing"),
       ],
     },
@@ -109,7 +113,11 @@
           .filter((elementType) => loopElementTypes.has(elementType))
       );
 
-      const loopOrder = ["work_history_loop", "education_loop", "certifications_loop"];
+      const loopOrder = [
+        "work_history_loop",
+        "education_loop",
+        "certifications_loop",
+      ];
       const dynamicLoopCategories: PaletteCategory[] = [];
 
       for (const loopType of loopOrder) {
@@ -117,7 +125,8 @@
         const children = loopSpecificChildren[loopType] || [];
         if (children.length === 0) continue;
         dynamicLoopCategories.push({
-          name: loopCategoryNames[loopType] || elementLabels[loopType] || loopType,
+          name:
+            loopCategoryNames[loopType] || elementLabels[loopType] || loopType,
           items: children.map((elementType) => makeItem(elementType)),
         });
       }
@@ -132,16 +141,21 @@
   }
 
   // Compute the set of element types already present on the canvas.
-  $: usedElementTypes = new Set(
-    $canvasElements.map((el) => el.element_type)
-  );
+  $: usedElementTypes = new Set($canvasElements.map((el) => el.element_type));
 
   // Check if an element type should appear subdued (already on canvas and not repeatable).
   function isUsed(elementType: string): boolean {
-    return !repeatableElementTypes.has(elementType) && usedElementTypes.has(elementType);
+    return (
+      !repeatableElementTypes.has(elementType) &&
+      usedElementTypes.has(elementType)
+    );
   }
 
   function handleDragStart(e: DragEvent, item: PaletteItem): void {
+    if ($builderReadOnly) {
+      e.preventDefault();
+      return;
+    }
     if (!e.dataTransfer) return;
     nativeDraggedElementType.set(item.element_type);
     e.dataTransfer.setData("application/x-template-element", item.element_type);
@@ -152,7 +166,9 @@
 
   function handleDragEnd(e: DragEvent): void {
     nativeDraggedElementType.set(null);
-    (e.currentTarget as HTMLElement | null)?.classList.remove("palette-dragging");
+    (e.currentTarget as HTMLElement | null)?.classList.remove(
+      "palette-dragging"
+    );
   }
 </script>
 
@@ -169,7 +185,8 @@
           <div
             class="palette-item"
             class:used={isUsed(item.element_type)}
-            draggable="true"
+            class:readonly={$builderReadOnly}
+            draggable={!$builderReadOnly}
             on:dragstart={(e) => handleDragStart(e, item)}
             on:dragend={handleDragEnd}
           >
@@ -247,6 +264,11 @@
 
   .palette-item.used:hover {
     opacity: 0.55;
+  }
+
+  .palette-item.readonly {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .used-badge {

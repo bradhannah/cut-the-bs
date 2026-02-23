@@ -14,6 +14,7 @@
     canvasElements,
     selectedElementId,
     currentTemplate,
+    builderReadOnly,
     markSaving,
     markSaved,
     markSaveError,
@@ -29,6 +30,7 @@
 
   export let parentElement: TemplateElement;
   export let children: TemplateElement[] = [];
+  export let readOnly: boolean = false;
 
   const dispatch = createEventDispatcher<{
     select: { id: number };
@@ -144,6 +146,7 @@
   }
 
   function handleNativeDragOver(e: DragEvent): void {
+    if (readOnly || $builderReadOnly) return;
     if (!isTemplateElementDrag(e)) return;
 
     const elementType = getDraggedElementType(e);
@@ -169,6 +172,7 @@
   }
 
   function handleNativeDragLeave(e: DragEvent): void {
+    if (readOnly || $builderReadOnly) return;
     e.stopPropagation();
     const container = e.currentTarget as HTMLElement | null;
     const next = e.relatedTarget;
@@ -180,6 +184,7 @@
   }
 
   async function handleNativeDrop(e: DragEvent): Promise<void> {
+    if (readOnly || $builderReadOnly) return;
     const elementType = getDraggedElementType(e);
     if (!elementType) return;
 
@@ -254,6 +259,7 @@
   async function handleConsider(
     e: CustomEvent<{ items: ChildDndItem[]; info?: { source?: string; trigger?: string } }>
   ): Promise<void> {
+    if (readOnly || $builderReadOnly) return;
     const items = normalizeDndItems(e.detail.items);
 
     // Detect if an invalid element type is being dragged over.
@@ -270,6 +276,7 @@
   async function handleFinalize(
     e: CustomEvent<{ items: ChildDndItem[]; info?: { source?: string; trigger?: string } }>
   ): Promise<void> {
+    if (readOnly || $builderReadOnly) return;
     const items = normalizeDndItems(e.detail.items);
     dndItems = items;
 
@@ -334,6 +341,7 @@
         type: "template-element",
         dropTargetStyle: { outline: invalidDragOver ? "2px dashed #ff6b6b" : "2px dashed #7a6af4", outlineOffset: "-2px" },
         dropFromOthersDisabled: true,
+        dragDisabled: readOnly || $builderReadOnly,
         centreDraggedOnCursor: false,
         useCursorForDetection: true,
       }}
@@ -357,6 +365,7 @@
         type: "template-element",
         dropTargetStyle: { outline: invalidDragOver ? "2px dashed #ff6b6b" : "2px dashed #7a6af4", outlineOffset: "-2px" },
         dropFromOthersDisabled: true,
+        dragDisabled: readOnly || $builderReadOnly,
         centreDraggedOnCursor: false,
         useCursorForDetection: true,
       }}
@@ -381,13 +390,15 @@
           <span class="drag-handle">&#x2630;</span>
           <span class="child-icon">{elementIcons[child.element_type] || "?"}</span>
           <span class="child-label">{elementLabels[child.element_type] || child.element_type}</span>
-          <button
-            class="delete-btn"
-            title="Delete child element"
-            on:click={(e) => handleChildDelete(e, Number(child.id))}
-          >
-            &times;
-          </button>
+          {#if !(readOnly || $builderReadOnly)}
+            <button
+              class="delete-btn"
+              title="Delete child element"
+              on:click={(e) => handleChildDelete(e, Number(child.id))}
+            >
+              &times;
+            </button>
+          {/if}
         </div>
       {/each}
       {#if dropIndicatorIndex === dndItems.length}

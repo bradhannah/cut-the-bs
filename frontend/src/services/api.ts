@@ -654,6 +654,15 @@ export async function createExport(req: ExportRequest): Promise<ResumeExport> {
   return result;
 }
 
+export async function overwriteExport(
+  exportID: number,
+  req: ExportRequest
+): Promise<ResumeExport> {
+  const result = await call<ResumeExport>("OverwriteExport", exportID, req);
+  addToast("success", "Export overwritten successfully");
+  return result;
+}
+
 export async function listExports(): Promise<ResumeExport[]> {
   return call<ResumeExport[]>("ListExports");
 }
@@ -715,10 +724,12 @@ export async function exportCoverLetter(id: number): Promise<string> {
 export interface ApplicationInput {
   company_name: string;
   position_title: string;
+  job_posting_url: string;
   date_applied: string;
   fit_indicator: string;
   resume_export_id: number | null;
-  cover_letter_id: number | null;
+  cover_letter_template_id: number | null;
+  cover_letter_latest_export_id: number | null;
   notes: string;
 }
 
@@ -726,12 +737,16 @@ export interface JobApplication {
   id: number;
   company_name: string;
   position_title: string;
+  job_posting_url: string;
   date_applied: string;
   status: string;
   fit_indicator: string;
   resume_export_id: number | null;
-  cover_letter_id: number | null;
+  cover_letter_template_id: number | null;
+  cover_letter_latest_export_id: number | null;
   notes: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface StatusChange {
@@ -813,6 +828,30 @@ export async function getApplicationStatuses(): Promise<string[]> {
 
 export async function getFitIndicators(): Promise<string[]> {
   return call<string[]>("GetFitIndicators");
+}
+
+export async function getApplicationPromptValues(
+  applicationID: number,
+  templateID: number
+): Promise<Record<string, string>> {
+  return call<Record<string, string>>(
+    "GetApplicationPromptValues",
+    applicationID,
+    templateID
+  );
+}
+
+export async function saveApplicationPromptValues(
+  applicationID: number,
+  templateID: number,
+  values: Record<string, string>
+): Promise<void> {
+  await call<void>(
+    "SaveApplicationPromptValues",
+    applicationID,
+    templateID,
+    values
+  );
 }
 
 // --- Lens Types ---
@@ -1178,7 +1217,11 @@ export interface TemplateVariable {
 }
 
 export interface GuidedPrompt {
+  key?: string;
   prompt_text: string;
+  help_text?: string;
+  required?: boolean;
+  multiline?: boolean;
   source: string;
 }
 

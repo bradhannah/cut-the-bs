@@ -14,9 +14,9 @@ import (
 // date_applied descending (most recent first).
 func (s *Store) ListApplications(ctx context.Context) ([]domain.JobApplication, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, company_name, position_title, date_applied,
+		`SELECT id, company_name, position_title, COALESCE(job_posting_url, ''), date_applied,
 		        status, COALESCE(fit_indicator, ''),
-		        resume_export_id, cover_letter_id,
+		        resume_export_id, cover_letter_template_id, cover_letter_latest_export_id,
 		        COALESCE(notes, ''),
 		        created_at, updated_at
 		 FROM job_application
@@ -44,9 +44,9 @@ func (s *Store) ListApplications(ctx context.Context) ([]domain.JobApplication, 
 func (s *Store) SearchApplications(ctx context.Context, query string) ([]domain.JobApplication, error) {
 	like := "%" + query + "%"
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, company_name, position_title, date_applied,
+		`SELECT id, company_name, position_title, COALESCE(job_posting_url, ''), date_applied,
 		        status, COALESCE(fit_indicator, ''),
-		        resume_export_id, cover_letter_id,
+		        resume_export_id, cover_letter_template_id, cover_letter_latest_export_id,
 		        COALESCE(notes, ''),
 		        created_at, updated_at
 		 FROM job_application
@@ -83,19 +83,20 @@ func (s *Store) getApplication(ctx context.Context, id int64) (domain.JobApplica
 	var fitIndicator sql.NullString
 	var notes sql.NullString
 	var resumeExportID sql.NullInt64
-	var coverLetterID sql.NullInt64
+	var coverLetterTemplateID sql.NullInt64
+	var coverLetterLatestExportID sql.NullInt64
 
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, company_name, position_title, date_applied,
+		`SELECT id, company_name, position_title, COALESCE(job_posting_url, ''), date_applied,
 		        status, fit_indicator,
-		        resume_export_id, cover_letter_id,
+		        resume_export_id, cover_letter_template_id, cover_letter_latest_export_id,
 		        notes,
 		        created_at, updated_at
 		 FROM job_application WHERE id = ?`, id,
 	).Scan(
-		&app.ID, &app.CompanyName, &app.PositionTitle, &app.DateApplied,
+		&app.ID, &app.CompanyName, &app.PositionTitle, &app.JobPostingURL, &app.DateApplied,
 		&app.Status, &fitIndicator,
-		&resumeExportID, &coverLetterID,
+		&resumeExportID, &coverLetterTemplateID, &coverLetterLatestExportID,
 		&notes,
 		&app.CreatedAt, &app.UpdatedAt,
 	)
@@ -112,9 +113,13 @@ func (s *Store) getApplication(ctx context.Context, id int64) (domain.JobApplica
 		v := resumeExportID.Int64
 		app.ResumeExportID = &v
 	}
-	if coverLetterID.Valid {
-		v := coverLetterID.Int64
-		app.CoverLetterID = &v
+	if coverLetterTemplateID.Valid {
+		v := coverLetterTemplateID.Int64
+		app.CoverLetterTemplateID = &v
+	}
+	if coverLetterLatestExportID.Valid {
+		v := coverLetterLatestExportID.Int64
+		app.CoverLetterLatestExportID = &v
 	}
 
 	return app, nil
@@ -125,14 +130,15 @@ func (s *Store) getApplication(ctx context.Context, id int64) (domain.JobApplica
 func (s *Store) CreateApplication(ctx context.Context, input domain.ApplicationInput) (domain.JobApplication, error) {
 	result, err := s.db.ExecContext(ctx,
 		`INSERT INTO job_application
-		 (company_name, position_title, date_applied, status,
-		  fit_indicator, resume_export_id, cover_letter_id, notes)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		input.CompanyName, input.PositionTitle, input.DateApplied,
+		 (company_name, position_title, job_posting_url, date_applied, status,
+		  fit_indicator, resume_export_id, cover_letter_template_id, cover_letter_latest_export_id, notes)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		input.CompanyName, input.PositionTitle, input.JobPostingURL, input.DateApplied,
 		domain.StatusApplied,
 		nullableString(input.FitIndicator),
 		nullableInt64Ptr(input.ResumeExportID),
-		nullableInt64Ptr(input.CoverLetterID),
+		nullableInt64Ptr(input.CoverLetterTemplateID),
+		nullableInt64Ptr(input.CoverLetterLatestExportID),
 		nullableString(input.Notes),
 	)
 	if err != nil {
@@ -151,15 +157,17 @@ func (s *Store) CreateApplication(ctx context.Context, input domain.ApplicationI
 func (s *Store) UpdateApplication(ctx context.Context, id int64, input domain.ApplicationInput) (domain.JobApplication, error) {
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE job_application
-		 SET company_name = ?, position_title = ?, date_applied = ?,
+		 SET company_name = ?, position_title = ?, job_posting_url = ?, date_applied = ?,
 		     fit_indicator = ?, resume_export_id = ?,
-		     cover_letter_id = ?, notes = ?,
+		     cover_letter_template_id = ?,
+		     cover_letter_latest_export_id = ?, notes = ?,
 		     updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
 		 WHERE id = ?`,
-		input.CompanyName, input.PositionTitle, input.DateApplied,
+		input.CompanyName, input.PositionTitle, input.JobPostingURL, input.DateApplied,
 		nullableString(input.FitIndicator),
 		nullableInt64Ptr(input.ResumeExportID),
-		nullableInt64Ptr(input.CoverLetterID),
+		nullableInt64Ptr(input.CoverLetterTemplateID),
+		nullableInt64Ptr(input.CoverLetterLatestExportID),
 		nullableString(input.Notes),
 		id,
 	)
@@ -329,12 +337,13 @@ type applicationScanner interface {
 func scanApplication(row applicationScanner) (domain.JobApplication, error) {
 	var app domain.JobApplication
 	var resumeExportID sql.NullInt64
-	var coverLetterID sql.NullInt64
+	var coverLetterTemplateID sql.NullInt64
+	var coverLetterLatestExportID sql.NullInt64
 
 	if err := row.Scan(
-		&app.ID, &app.CompanyName, &app.PositionTitle, &app.DateApplied,
+		&app.ID, &app.CompanyName, &app.PositionTitle, &app.JobPostingURL, &app.DateApplied,
 		&app.Status, &app.FitIndicator,
-		&resumeExportID, &coverLetterID,
+		&resumeExportID, &coverLetterTemplateID, &coverLetterLatestExportID,
 		&app.Notes,
 		&app.CreatedAt, &app.UpdatedAt,
 	); err != nil {
@@ -345,9 +354,13 @@ func scanApplication(row applicationScanner) (domain.JobApplication, error) {
 		v := resumeExportID.Int64
 		app.ResumeExportID = &v
 	}
-	if coverLetterID.Valid {
-		v := coverLetterID.Int64
-		app.CoverLetterID = &v
+	if coverLetterTemplateID.Valid {
+		v := coverLetterTemplateID.Int64
+		app.CoverLetterTemplateID = &v
+	}
+	if coverLetterLatestExportID.Valid {
+		v := coverLetterLatestExportID.Int64
+		app.CoverLetterLatestExportID = &v
 	}
 
 	return app, nil

@@ -36,6 +36,7 @@ const (
 // Cover letter element type constants.
 const (
 	ElementBodyText         = "body_text"
+	ElementParagraph        = "paragraph"
 	ElementDate             = "date"
 	ElementGreeting         = "greeting"
 	ElementClosing          = "closing"
@@ -98,6 +99,7 @@ var resumeElementTypes = map[string]bool{
 var coverLetterElementTypes = map[string]bool{
 	ElementProfileHeader:    true,
 	ElementBodyText:         true,
+	ElementParagraph:        true,
 	ElementDate:             true,
 	ElementGreeting:         true,
 	ElementClosing:          true,
@@ -242,7 +244,11 @@ type TemplateVariable struct {
 // GuidedPrompt represents a prompt placeholder found in a cover
 // letter template (e.g., {{prompt: Why this role?}}).
 type GuidedPrompt struct {
+	Key        string `json:"key,omitempty"`
 	PromptText string `json:"prompt_text"`
+	HelpText   string `json:"help_text,omitempty"`
+	Required   bool   `json:"required,omitempty"`
+	Multiline  bool   `json:"multiline,omitempty"`
 	Source     string `json:"source"` // element_type where the prompt was found
 }
 

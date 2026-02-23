@@ -90,6 +90,8 @@ export function ExportTemplate(arg1:number,arg2:string):Promise<void>;
 
 export function GetApplicationHistory(arg1:number):Promise<Array<domain.StatusChange>>;
 
+export function GetApplicationPromptValues(arg1:number,arg2:number):Promise<Record<string, string>>;
+
 export function GetApplicationStatuses():Promise<Array<string>>;
 
 export function GetBackupSettings():Promise<domain.BackupSettings>;
@@ -162,6 +164,8 @@ export function OpenExportFile(arg1:number):Promise<void>;
 
 export function OpenFile(arg1:string):Promise<void>;
 
+export function OverwriteExport(arg1:number,arg2:domain.ExportRequest):Promise<domain.ResumeExport>;
+
 export function ParseTemplateVariables(arg1:number):Promise<domain.TemplateVariables>;
 
 export function PreviewExport(arg1:domain.ExportRequest):Promise<string>;
@@ -187,6 +191,8 @@ export function ReorderSkillCategories(arg1:Array<number>):Promise<void>;
 export function ReorderTemplateElements(arg1:number,arg2:any,arg3:Array<number>):Promise<void>;
 
 export function ReorderWorkHistory(arg1:Array<number>):Promise<void>;
+
+export function SaveApplicationPromptValues(arg1:number,arg2:number,arg3:Record<string, string>):Promise<void>;
 
 export function SearchApplications(arg1:string):Promise<Array<domain.JobApplication>>;
 

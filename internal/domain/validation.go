@@ -217,6 +217,11 @@ func ValidateApplicationInput(input ApplicationInput) error {
 	if err := ValidateRequired(input.DateApplied, "date applied"); err != nil {
 		return err
 	}
+	if strings.TrimSpace(input.JobPostingURL) != "" {
+		if err := ValidateURL(strings.TrimSpace(input.JobPostingURL)); err != nil {
+			return fmt.Errorf("invalid job posting url: %w", err)
+		}
+	}
 	if !ValidFitIndicator(input.FitIndicator) {
 		return fmt.Errorf("invalid fit indicator: %s", input.FitIndicator)
 	}

@@ -6,7 +6,7 @@ import (
 )
 
 // currentVersion is the latest schema version.
-const currentVersion = 7
+const currentVersion = 11
 
 // Migrate applies all pending schema migrations to the database.
 // It reads PRAGMA user_version to determine the current schema version
@@ -38,6 +38,10 @@ func Migrate(store *Store) error {
 		migrateV5,
 		migrateV6,
 		migrateV7,
+		migrateV8,
+		migrateV9,
+		migrateV10,
+		migrateV11,
 	}
 
 	for i := version; i < currentVersion; i++ {
@@ -1022,7 +1026,7 @@ func migrateV7(store *Store) error {
 		// === Seed built-in Formal cover letter template ===
 
 		`INSERT INTO document_template (id, name, description, template_type, is_builtin, margin_top, margin_bottom, margin_left, margin_right)
-		 VALUES (3, 'Formal', 'Traditional business letter with date, recipient address, and formal salutation', 'cover_letter', 1, 72.0, 72.0, 72.0, 72.0)`,
+		 VALUES (3, 'Formal', 'Traditional business-style cover letter with structured prompts and formal tone', 'cover_letter', 1, 72.0, 72.0, 72.0, 72.0)`,
 
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
 		 (50, 3, NULL, 'profile_header', '{"name_font_size":18.0,"detail_font_size":10.0,"alignment":"center","link_separator":" | ","show_links":true,"show_links_inline":false,"space_after":6.0}', 0)`,
@@ -1035,29 +1039,35 @@ func migrateV7(store *Store) error {
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
 		 (54, 3, NULL, 'greeting', '{"text":"Dear {{hiring_manager}},","font_size":10.0,"space_after":10.0}', 4)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (55, 3, NULL, 'body_text', '{"font_size":10.0,"line_spacing":3.0,"space_after":10.0}', 5)`,
+		 (55, 3, NULL, 'paragraph', '{"font_size":10.0,"line_spacing":1.15,"space_after":10.0,"segments":[{"type":"static","text":"I am writing to express my interest in the "},{"type":"application","token":"position_title"},{"type":"static","text":" role at "},{"type":"application","token":"company_name"},{"type":"static","text":". "},{"type":"adhoc","key":"why_fit_formal","label":"Why are you a strong fit?","help_text":"Highlight relevant experience and outcomes you can deliver.","required":true,"multiline":true}]}', 5)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (56, 3, NULL, 'closing', '{"text":"Sincerely,","font_size":10.0,"space_after":28.0}', 6)`,
+		 (56, 3, NULL, 'paragraph', '{"font_size":10.0,"line_spacing":1.15,"space_after":10.0,"segments":[{"type":"static","text":"I am especially interested in "},{"type":"application","token":"company_name"},{"type":"static","text":" because "},{"type":"adhoc","key":"why_company_formal","label":"Why this company?","help_text":"Mention a mission, product, or initiative that stands out to you.","required":true,"multiline":true},{"type":"static","text":"."}]}', 6)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (57, 3, NULL, 'static_text', '{"text":"{{signer_name}}","font_size":10.0,"font_style":"regular","alignment":"left","space_before":0.0,"space_after":0.0}', 7)`,
+		 (57, 3, NULL, 'paragraph', '{"font_size":10.0,"line_spacing":1.15,"space_after":10.0,"segments":[{"type":"static","text":"Thank you for your time and consideration. I would welcome the opportunity to discuss how I can contribute to "},{"type":"application","token":"company_name"},{"type":"static","text":"."}]}', 7)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (58, 3, NULL, 'closing', '{"text":"Sincerely,","font_size":10.0,"space_after":28.0}', 8)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (59, 3, NULL, 'static_text', '{"text":"{{signer_name}}","font_size":10.0,"font_style":"regular","alignment":"left","space_before":0.0,"space_after":0.0}', 9)`,
 
 		// === Seed built-in Casual cover letter template ===
 
 		`INSERT INTO document_template (id, name, description, template_type, is_builtin, margin_top, margin_bottom, margin_left, margin_right)
-		 VALUES (4, 'Casual', 'Relaxed format with greeting, body text, and casual sign-off', 'cover_letter', 1, 72.0, 72.0, 72.0, 72.0)`,
+		 VALUES (4, 'Casual', 'Conversational cover letter starter with lightweight prompts and approachable tone', 'cover_letter', 1, 72.0, 72.0, 72.0, 72.0)`,
 
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (58, 4, NULL, 'profile_header', '{"name_font_size":18.0,"detail_font_size":10.0,"alignment":"center","link_separator":" | ","show_links":true,"show_links_inline":false,"space_after":6.0}', 0)`,
+		 (60, 4, NULL, 'profile_header', '{"name_font_size":18.0,"detail_font_size":10.0,"alignment":"center","link_separator":" | ","show_links":true,"show_links_inline":false,"space_after":6.0}', 0)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (59, 4, NULL, 'horizontal_rule', '{"weight":0.3,"space_before":2.0,"space_after":18.0}', 1)`,
+		 (61, 4, NULL, 'greeting', '{"text":"Hi {{hiring_manager}},","font_size":10.0,"space_after":10.0}', 1)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (60, 4, NULL, 'greeting', '{"text":"Hi {{hiring_manager}},","font_size":10.0,"space_after":10.0}', 2)`,
+		 (62, 4, NULL, 'paragraph', '{"font_size":10.0,"line_spacing":1.15,"space_after":10.0,"segments":[{"type":"static","text":"I would love to join "},{"type":"application","token":"company_name"},{"type":"static","text":" as a "},{"type":"application","token":"position_title"},{"type":"static","text":". What stands out to me about your team is "},{"type":"adhoc","key":"why_team_casual","label":"What stands out about this team?","help_text":"Keep it natural and specific.","required":true,"multiline":true},{"type":"static","text":"."}]}', 2)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (61, 4, NULL, 'body_text', '{"font_size":10.0,"line_spacing":3.0,"space_after":10.0}', 3)`,
+		 (63, 4, NULL, 'paragraph', '{"font_size":10.0,"line_spacing":1.15,"space_after":10.0,"segments":[{"type":"static","text":"A quick example of what I would bring to this role: "},{"type":"adhoc","key":"value_example_casual","label":"Quick value example","help_text":"Share one example of impact or ownership.","required":false,"multiline":true}]}', 3)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (62, 4, NULL, 'closing', '{"text":"Best regards,","font_size":10.0,"space_after":24.0}', 4)`,
+		 (64, 4, NULL, 'paragraph', '{"font_size":10.0,"line_spacing":1.15,"space_after":10.0,"segments":[{"type":"static","text":"If it is helpful, I can share more details and examples. You can reach me at "},{"type":"profile","token":"email"},{"type":"static","text":"."}]}', 4)`,
 		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
-		 (63, 4, NULL, 'static_text', '{"text":"{{signer_name}}","font_size":10.0,"font_style":"regular","alignment":"left","space_before":0.0,"space_after":0.0}', 5)`,
+		 (65, 4, NULL, 'closing', '{"text":"Thanks,","font_size":10.0,"space_after":24.0}', 5)`,
+		`INSERT INTO template_element (id, template_id, parent_id, element_type, config, sort_order) VALUES
+		 (66, 4, NULL, 'static_text', '{"text":"{{signer_name}}","font_size":10.0,"font_style":"regular","alignment":"left","space_before":0.0,"space_after":0.0}', 6)`,
 	}
 
 	for _, stmt := range statements {
@@ -1075,5 +1085,222 @@ func migrateV7(store *Store) error {
 	}
 
 	store.logger.Info("migration v7 applied successfully")
+	return nil
+}
+
+// migrateV8 moves job_application.cover_letter_id to
+// job_application.cover_letter_export_id (linking to resume_export)
+// and adds per-application+template prompt value persistence.
+func migrateV8(store *Store) error {
+	// Disable foreign keys for table rebuild pattern.
+	if _, err := store.db.Exec("PRAGMA foreign_keys = OFF"); err != nil {
+		return fmt.Errorf("disabling foreign keys: %w", err)
+	}
+	defer func() { _, _ = store.db.Exec("PRAGMA foreign_keys = ON") }()
+
+	tx, err := store.db.Begin()
+	if err != nil {
+		return fmt.Errorf("unable to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	statements := []string{
+		`CREATE TABLE job_application_new (
+			id INTEGER PRIMARY KEY,
+			company_name TEXT NOT NULL,
+			position_title TEXT NOT NULL,
+			date_applied TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'Applied',
+			fit_indicator TEXT,
+			resume_export_id INTEGER REFERENCES resume_export(id) ON DELETE SET NULL,
+			cover_letter_export_id INTEGER REFERENCES resume_export(id) ON DELETE SET NULL,
+			notes TEXT DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+			updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+		)`,
+
+		`INSERT INTO job_application_new
+		 (id, company_name, position_title, date_applied, status,
+		  fit_indicator, resume_export_id, cover_letter_export_id, notes,
+		  created_at, updated_at)
+		 SELECT id, company_name, position_title, date_applied, status,
+		        fit_indicator, resume_export_id, NULL, notes,
+		        created_at, updated_at
+		 FROM job_application`,
+
+		`DROP TABLE job_application`,
+		`ALTER TABLE job_application_new RENAME TO job_application`,
+
+		`CREATE INDEX idx_job_application_company ON job_application(company_name)`,
+		`CREATE INDEX idx_job_application_status ON job_application(status)`,
+
+		`CREATE TABLE application_prompt_value (
+			id INTEGER PRIMARY KEY,
+			application_id INTEGER NOT NULL REFERENCES job_application(id) ON DELETE CASCADE,
+			template_id INTEGER NOT NULL REFERENCES document_template(id) ON DELETE CASCADE,
+			field_key TEXT NOT NULL,
+			field_value TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+			updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+			UNIQUE(application_id, template_id, field_key)
+		)`,
+		`CREATE INDEX idx_app_prompt_value_app_tmpl ON application_prompt_value(application_id, template_id)`,
+	}
+
+	for _, stmt := range statements {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("executing statement: %w\nSQL: %s", err, stmt)
+		}
+	}
+
+	if _, err := tx.Exec("PRAGMA user_version = 8"); err != nil {
+		return fmt.Errorf("setting user_version: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing migration: %w", err)
+	}
+
+	store.logger.Info("migration v8 applied successfully")
+	return nil
+}
+
+// migrateV9 makes cover letter linkage template-first by adding
+// job_application.cover_letter_template_id and
+// job_application.cover_letter_latest_export_id. Existing
+// cover_letter_export_id values are copied to
+// cover_letter_latest_export_id for continuity.
+func migrateV9(store *Store) error {
+	tx, err := store.db.Begin()
+	if err != nil {
+		return fmt.Errorf("unable to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	statements := []string{
+		`ALTER TABLE job_application
+		 ADD COLUMN cover_letter_template_id INTEGER REFERENCES document_template(id) ON DELETE SET NULL`,
+		`ALTER TABLE job_application
+		 ADD COLUMN cover_letter_latest_export_id INTEGER REFERENCES resume_export(id) ON DELETE SET NULL`,
+		`UPDATE job_application
+		 SET cover_letter_latest_export_id = cover_letter_export_id
+		 WHERE cover_letter_latest_export_id IS NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_job_application_cover_tmpl ON job_application(cover_letter_template_id)`,
+	}
+
+	for _, stmt := range statements {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("executing statement: %w\nSQL: %s", err, stmt)
+		}
+	}
+
+	if _, err := tx.Exec("PRAGMA user_version = 9"); err != nil {
+		return fmt.Errorf("setting user_version: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing migration: %w", err)
+	}
+
+	store.logger.Info("migration v9 applied successfully")
+	return nil
+}
+
+// migrateV10 adds job_application.job_posting_url for storing a
+// source listing URL per application.
+func migrateV10(store *Store) error {
+	tx, err := store.db.Begin()
+	if err != nil {
+		return fmt.Errorf("unable to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(`ALTER TABLE job_application ADD COLUMN job_posting_url TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("executing statement: %w", err)
+	}
+
+	if _, err := tx.Exec("PRAGMA user_version = 10"); err != nil {
+		return fmt.Errorf("setting user_version: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing migration: %w", err)
+	}
+
+	store.logger.Info("migration v10 applied successfully")
+	return nil
+}
+
+// migrateV11 refreshes built-in Formal and Casual cover letter
+// templates with generic starter copy and guided paragraph prompts.
+func migrateV11(store *Store) error {
+	tx, err := store.db.Begin()
+	if err != nil {
+		return fmt.Errorf("unable to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	statements := []string{
+		`UPDATE document_template
+		 SET description = 'Traditional business-style cover letter with structured prompts and formal tone'
+		 WHERE id = 3 AND is_builtin = 1`,
+		`UPDATE document_template
+		 SET description = 'Conversational cover letter starter with lightweight prompts and approachable tone'
+		 WHERE id = 4 AND is_builtin = 1`,
+
+		`DELETE FROM template_element WHERE template_id IN (3, 4)`,
+
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (3, NULL, 'profile_header', '{"name_font_size":18.0,"detail_font_size":10.0,"alignment":"center","link_separator":" | ","show_links":true,"show_links_inline":false,"space_after":6.0}', 0)`,
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (3, NULL, 'horizontal_rule', '{"weight":0.5,"space_before":2.0,"space_after":14.0}', 1)`,
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (3, NULL, 'date', '{"font_size":10.0,"format":"January 2, 2006","alignment":"left","space_after":14.0}', 2)`,
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (3, NULL, 'recipient_address', '{"font_size":10.0,"space_after":14.0}', 3)`,
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (3, NULL, 'greeting', '{"text":"Dear {{hiring_manager}},","font_size":10.0,"space_after":10.0}', 4)`,
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (3, NULL, 'paragraph', '{"font_size":10.0,"line_spacing":1.15,"space_after":10.0,"segments":[{"type":"static","text":"I am writing to express my interest in the "},{"type":"application","token":"position_title"},{"type":"static","text":" role at "},{"type":"application","token":"company_name"},{"type":"static","text":". "},{"type":"adhoc","key":"why_fit_formal","label":"Why are you a strong fit?","help_text":"Highlight relevant experience and outcomes you can deliver.","required":true,"multiline":true}]}', 5)`,
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (3, NULL, 'paragraph', '{"font_size":10.0,"line_spacing":1.15,"space_after":10.0,"segments":[{"type":"static","text":"I am especially interested in "},{"type":"application","token":"company_name"},{"type":"static","text":" because "},{"type":"adhoc","key":"why_company_formal","label":"Why this company?","help_text":"Mention a mission, product, or initiative that stands out to you.","required":true,"multiline":true},{"type":"static","text":"."}]}', 6)`,
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (3, NULL, 'paragraph', '{"font_size":10.0,"line_spacing":1.15,"space_after":10.0,"segments":[{"type":"static","text":"Thank you for your time and consideration. I would welcome the opportunity to discuss how I can contribute to "},{"type":"application","token":"company_name"},{"type":"static","text":"."}]}', 7)`,
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (3, NULL, 'closing', '{"text":"Sincerely,","font_size":10.0,"space_after":28.0}', 8)`,
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (3, NULL, 'static_text', '{"text":"{{signer_name}}","font_size":10.0,"font_style":"regular","alignment":"left","space_before":0.0,"space_after":0.0}', 9)`,
+
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (4, NULL, 'profile_header', '{"name_font_size":18.0,"detail_font_size":10.0,"alignment":"center","link_separator":" | ","show_links":true,"show_links_inline":false,"space_after":6.0}', 0)`,
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (4, NULL, 'greeting', '{"text":"Hi {{hiring_manager}},","font_size":10.0,"space_after":10.0}', 1)`,
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (4, NULL, 'paragraph', '{"font_size":10.0,"line_spacing":1.15,"space_after":10.0,"segments":[{"type":"static","text":"I would love to join "},{"type":"application","token":"company_name"},{"type":"static","text":" as a "},{"type":"application","token":"position_title"},{"type":"static","text":". What stands out to me about your team is "},{"type":"adhoc","key":"why_team_casual","label":"What stands out about this team?","help_text":"Keep it natural and specific.","required":true,"multiline":true},{"type":"static","text":"."}]}', 2)`,
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (4, NULL, 'paragraph', '{"font_size":10.0,"line_spacing":1.15,"space_after":10.0,"segments":[{"type":"static","text":"A quick example of what I would bring to this role: "},{"type":"adhoc","key":"value_example_casual","label":"Quick value example","help_text":"Share one example of impact or ownership.","required":false,"multiline":true}]}', 3)`,
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (4, NULL, 'paragraph', '{"font_size":10.0,"line_spacing":1.15,"space_after":10.0,"segments":[{"type":"static","text":"If it is helpful, I can share more details and examples. You can reach me at "},{"type":"profile","token":"email"},{"type":"static","text":"."}]}', 4)`,
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (4, NULL, 'closing', '{"text":"Thanks,","font_size":10.0,"space_after":24.0}', 5)`,
+		`INSERT INTO template_element (template_id, parent_id, element_type, config, sort_order) VALUES
+		 (4, NULL, 'static_text', '{"text":"{{signer_name}}","font_size":10.0,"font_style":"regular","alignment":"left","space_before":0.0,"space_after":0.0}', 6)`,
+	}
+
+	for _, stmt := range statements {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("executing statement: %w\nSQL: %s", err, stmt)
+		}
+	}
+
+	if _, err := tx.Exec("PRAGMA user_version = 11"); err != nil {
+		return fmt.Errorf("setting user_version: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing migration: %w", err)
+	}
+
+	store.logger.Info("migration v11 applied successfully")
 	return nil
 }

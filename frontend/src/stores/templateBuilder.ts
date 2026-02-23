@@ -34,6 +34,9 @@ export const selectedElement = derived(
 /** The template metadata (without elements) for the currently open template. */
 export const currentTemplate = writable<DocumentTemplate | null>(null);
 
+/** True when builder should be read-only (view mode). */
+export const builderReadOnly = writable<boolean>(false);
+
 // --- Helpers ---
 
 // --- Save Status ---
@@ -80,8 +83,13 @@ export function resetBuilderStores(): void {
   canvasElements.set([]);
   selectedElementId.set(null);
   currentTemplate.set(null);
+  builderReadOnly.set(false);
   saveStatus.set("idle");
   if (saveStatusTimer) clearTimeout(saveStatusTimer);
+}
+
+export function setBuilderReadOnly(readOnly: boolean): void {
+  builderReadOnly.set(readOnly);
 }
 
 /**
