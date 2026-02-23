@@ -1,13 +1,16 @@
 # Cut the BS Makefile
 # Build automation for Go + Wails v2 + Svelte + Bun development workflow
 
-.PHONY: help dev build build-debug clean test test-race test-verbose vet lint lint-go lint-frontend fmt fmt-go fmt-frontend fmt-check fmt-frontend-check frontend-build frontend-check frontend-install install setup doctor ci kill-dev
+.PHONY: help dev build build-debug release-macos clean test test-race test-verbose vet lint lint-go lint-frontend fmt fmt-go fmt-frontend fmt-check fmt-frontend-check frontend-build frontend-check frontend-install install setup doctor ci kill-dev
 
 # Bun binary - check common locations
 BUN := $(shell command -v bun 2>/dev/null || echo ~/.bun/bin/bun)
 
 # Wails binary
 WAILS := $(shell command -v wails 2>/dev/null || echo ~/go/bin/wails)
+
+# Release artifact path used by Homebrew cask workflow
+RELEASE_ARCHIVE := dist/cut-the-bs-macos-universal.tar.gz
 
 # Default target
 help: ## Show this help message
@@ -21,6 +24,7 @@ help: ## Show this help message
 	@echo "  make dev          Start Wails dev mode (Go + Svelte hot reload)"
 	@echo "  make build        Build production macOS application"
 	@echo "  make build-debug  Build with debug symbols"
+	@echo "  make release-macos Build universal macOS archive + checksum"
 	@echo "  make clean        Remove build artifacts"
 	@echo ""
 	@echo "Testing:"
@@ -108,10 +112,23 @@ build-debug: ## Build with debug symbols and dev tools
 	@echo ""
 	@echo "Debug build complete: build/bin/cut-the-bs.app"
 
+release-macos: ## Build universal macOS app archive for GitHub Release/Homebrew cask
+	@echo "Building universal macOS application..."
+	@$(WAILS) build -platform darwin/universal -clean
+	@echo "Packaging app bundle..."
+	@mkdir -p dist
+	@tar -czf $(RELEASE_ARCHIVE) -C build/bin cut-the-bs.app
+	@shasum -a 256 $(RELEASE_ARCHIVE) | tee $(RELEASE_ARCHIVE).sha256
+	@echo ""
+	@echo "Release artifacts created:"
+	@echo "  $(RELEASE_ARCHIVE)"
+	@echo "  $(RELEASE_ARCHIVE).sha256"
+
 clean: ## Remove build artifacts and caches
 	@echo "Removing build artifacts..."
 	@rm -rf build/bin
 	@rm -f cut-the-bs
+	@rm -rf dist
 	@rm -rf frontend/dist
 	@rm -rf frontend/node_modules/.vite
 	@echo "Clean complete."

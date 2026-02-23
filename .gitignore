@@ -35,7 +35,11 @@ go.work.sum
 # Wails build output
 build/bin
 /cut-the-bs
+dist
 
 # Frontend
 node_modules
 frontend/dist
+
+# macOS metadata
+.DS_Store
