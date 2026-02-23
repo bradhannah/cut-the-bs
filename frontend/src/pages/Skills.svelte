@@ -459,8 +459,8 @@
         </div>
       </div>
       {#if lenses.length > 0}
-        <div class="form-field lens-tags-field">
-          <label class="form-label">Lens Tags</label>
+        <fieldset class="form-field lens-tags-field">
+          <legend class="form-label">Lens Tags</legend>
           <div class="lens-tag-list">
             {#each lenses as lens (lens.id)}
               <label class="lens-tag-item">
@@ -473,7 +473,7 @@
               </label>
             {/each}
           </div>
-        </div>
+        </fieldset>
       {/if}
       <div class="form-actions">
         <button class="btn btn-primary" on:click={handleSkillSubmit}>

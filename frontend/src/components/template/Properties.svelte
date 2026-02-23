@@ -1956,7 +1956,7 @@
     {:else}
       <!-- Fallback: show raw config JSON -->
       <div class="prop-group">
-        <label class="prop-label">Raw Config</label>
+        <p class="prop-label">Raw Config</p>
         <pre class="config-preview">{JSON.stringify(config, null, 2)}</pre>
       </div>
     {/if}
