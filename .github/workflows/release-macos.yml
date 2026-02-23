@@ -32,6 +32,7 @@ jobs:
 
       - name: Validate via Makefile
         run: |
+          make frontend-build
           make test
           make frontend-check
 
