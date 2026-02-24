@@ -1322,6 +1322,10 @@ export async function setDataDirectory(path: string): Promise<void> {
   addToast("success", "Data directory updated — restart to apply");
 }
 
+export async function browseForDataDirectory(): Promise<string> {
+  return call<string>("BrowseForDataDirectory");
+}
+
 export async function getBackupSettings(): Promise<BackupSettings> {
   return call<BackupSettings>("GetBackupSettings");
 }

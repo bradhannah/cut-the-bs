@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -1288,7 +1289,18 @@ func (a *App) GetDataDirectory() string {
 
 // SetDataDirectory changes the data directory. Requires app restart.
 func (a *App) SetDataDirectory(path string) error {
-	a.cfg.DataDirectory = path
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		a.cfg.DataDirectory = ""
+		return a.cfg.Save()
+	}
+
+	absPath, err := filepath.Abs(trimmed)
+	if err != nil {
+		return fmt.Errorf("resolve data directory path: %w", err)
+	}
+
+	a.cfg.DataDirectory = filepath.Clean(absPath)
 	return a.cfg.Save()
 }
 
@@ -1327,4 +1339,33 @@ func (a *App) OpenDataDirectory() error {
 	}
 
 	return cmd.Start()
+}
+
+// BrowseForDataDirectory opens a native directory picker and returns
+// the selected path. Empty string means the user cancelled.
+func (a *App) BrowseForDataDirectory() (string, error) {
+	defaultDir, err := a.cfg.ResolveDataDir()
+	if err != nil {
+		defaultDir = ""
+	}
+
+	selected, err := wailsruntime.OpenDirectoryDialog(a.ctx, wailsruntime.OpenDialogOptions{
+		Title:                "Select Data Directory",
+		DefaultDirectory:     defaultDir,
+		CanCreateDirectories: true,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if selected == "" {
+		return "", nil
+	}
+
+	absPath, err := filepath.Abs(selected)
+	if err != nil {
+		return "", fmt.Errorf("resolve selected directory path: %w", err)
+	}
+
+	return filepath.Clean(absPath), nil
 }

@@ -115,10 +115,14 @@ func (c *Config) EnsureDataDir() error {
 	return os.MkdirAll(dir, 0o755)
 }
 
-// configFilePath returns the path to the config JSON file inside the
-// data directory.
+// configFilePath returns the path to the config JSON file in the
+// default application support directory.
+//
+// The config file location is intentionally stable so the app can
+// always discover user preferences, including a custom DataDirectory
+// value.
 func (c *Config) configFilePath() (string, error) {
-	dir, err := c.ResolveDataDir()
+	dir, err := DefaultDataDir()
 	if err != nil {
 		return "", err
 	}
@@ -168,6 +172,10 @@ func (c *Config) Save() error {
 	path, err := c.configFilePath()
 	if err != nil {
 		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("config: unable to create config directory: %w", err)
 	}
 
 	data, err := json.MarshalIndent(c, "", "  ")

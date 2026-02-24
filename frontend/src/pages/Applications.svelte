@@ -707,11 +707,13 @@
       return;
     }
 
-    for (const p of promptPrompts) {
-      const key = promptKey(p);
-      if (p.required && !promptValues[key]?.trim()) {
-        addToast("error", `Required field missing: ${p.prompt_text}`);
-        return;
+    if (mode === "cover_letter" || mode === "both") {
+      for (const p of promptPrompts) {
+        const key = promptKey(p);
+        if (p.required && !promptValues[key]?.trim()) {
+          addToast("error", `Required field missing: ${p.prompt_text}`);
+          return;
+        }
       }
     }
 

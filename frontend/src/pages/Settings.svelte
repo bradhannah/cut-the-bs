@@ -9,6 +9,8 @@
     deleteProfileLink,
     reorderProfileLinks,
     getDataDirectory,
+    setDataDirectory,
+    browseForDataDirectory,
     getBackupSettings,
     updateBackupSettings,
     exportAllData,
@@ -165,11 +167,14 @@
   let dataLoading = true;
   let exporting = false;
   let importing = false;
+  let dataDirectoryInput = "";
+  let updatingDataDirectory = false;
 
   async function loadDataManagement(): Promise<void> {
     dataLoading = true;
     try {
       dataDirectory = await getDataDirectory();
+      dataDirectoryInput = dataDirectory;
       backupSettings = await getBackupSettings();
       backupCountInput = backupSettings.rolling_backup_count;
     } finally {
@@ -228,6 +233,55 @@
       // Toast already shown
     }
   }
+
+  async function handleSaveDataDirectory(): Promise<void> {
+    if (updatingDataDirectory) {
+      return;
+    }
+
+    updatingDataDirectory = true;
+    try {
+      await setDataDirectory(dataDirectoryInput.trim());
+      await loadDataManagement();
+    } catch {
+      // Toast already shown
+    } finally {
+      updatingDataDirectory = false;
+    }
+  }
+
+  async function handleBrowseDataDirectory(): Promise<void> {
+    if (updatingDataDirectory) {
+      return;
+    }
+
+    try {
+      const selectedPath = await browseForDataDirectory();
+      if (selectedPath.trim()) {
+        dataDirectoryInput = selectedPath;
+      }
+    } catch {
+      // Toast already shown
+    }
+  }
+
+  async function handleResetDataDirectory(): Promise<void> {
+    if (updatingDataDirectory) {
+      return;
+    }
+
+    updatingDataDirectory = true;
+    try {
+      await setDataDirectory("");
+      await loadDataManagement();
+    } catch {
+      // Toast already shown
+    } finally {
+      updatingDataDirectory = false;
+    }
+  }
+
+  $: dataDirectoryInputDirty = dataDirectoryInput.trim() !== dataDirectory;
 
   $: sortedLinks = [...links].sort((a, b) => a.sort_order - b.sort_order);
 </script>
@@ -410,14 +464,59 @@
       <LoadingSpinner message="Loading data settings..." />
     {:else}
       <!-- Data Directory -->
-      <div class="data-dir-row">
+      <div class="data-dir-card">
         <div class="data-dir-info">
-          <span class="data-dir-label">Data Directory</span>
+          <label class="data-dir-label" for="data-directory">
+            Data Directory
+          </label>
+        </div>
+        <div class="data-dir-edit-row">
+          <input
+            id="data-directory"
+            type="text"
+            class="form-input data-dir-input"
+            bind:value={dataDirectoryInput}
+            placeholder="/path/to/your-data-directory"
+          />
+          <button
+            class="btn btn-small"
+            on:click={handleBrowseDataDirectory}
+            disabled={updatingDataDirectory}
+          >
+            Browse...
+          </button>
+        </div>
+        <div class="data-dir-actions-row">
+          <button
+            class="btn btn-small"
+            on:click={handleSaveDataDirectory}
+            disabled={!dataDirectoryInputDirty || updatingDataDirectory}
+          >
+            {updatingDataDirectory ? "Saving..." : "Save"}
+          </button>
+          <button
+            class="btn btn-small btn-ghost"
+            on:click={handleResetDataDirectory}
+            disabled={updatingDataDirectory}
+          >
+            Reset
+          </button>
+          <button
+            class="btn btn-small"
+            on:click={handleOpenDataDir}
+            disabled={updatingDataDirectory}
+          >
+            Open
+          </button>
+        </div>
+        <div class="data-dir-current-row">
+          <span class="data-dir-current-label">Current active directory</span>
           <span class="data-dir-path">{dataDirectory}</span>
         </div>
-        <button class="btn btn-small" on:click={handleOpenDataDir}>
-          Open
-        </button>
+        <p class="data-dir-note">
+          Use a custom folder for alternate datasets (for example, screenshot
+          sample data). Restart the app after saving.
+        </p>
       </div>
 
       <!-- Export / Import -->
@@ -706,10 +805,7 @@
   }
 
   /* --- Data Management --- */
-  .data-dir-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+  .data-dir-card {
     padding: 10px 12px;
     background-color: #1e2d3d;
     border: 1px solid #2a3a4a;
@@ -739,6 +835,47 @@
     overflow: hidden;
     text-overflow: ellipsis;
     font-family: monospace;
+  }
+
+  .data-dir-edit-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .data-dir-actions-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .data-dir-current-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 10px;
+  }
+
+  .data-dir-current-label {
+    font-size: 0.75rem;
+    color: #7a8a9a;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .data-dir-input {
+    flex: 1;
+    min-width: 0;
+    font-family: monospace;
+  }
+
+  .data-dir-note {
+    margin: 8px 0 0;
+    font-size: 0.8rem;
+    color: #5a6a7a;
   }
 
   .data-actions {

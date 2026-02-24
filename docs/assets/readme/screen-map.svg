@@ -1,0 +1,59 @@
+<svg width="1280" height="760" viewBox="0 0 1280 760" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">cut-the-bs screen map</title>
+  <desc id="desc">Diagram showing the main areas of the app and what each area is for.</desc>
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1280" y2="760" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1220"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#1E293B"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="760" fill="url(#bg2)"/>
+
+  <text x="72" y="82" fill="#F9FAFB" font-family="Segoe UI, Inter, sans-serif" font-size="40" font-weight="700">Main areas of the app</text>
+  <text x="72" y="120" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="20">Use this as a quick orientation map for first-time users.</text>
+
+  <g>
+    <rect x="72" y="170" width="548" height="228" rx="16" fill="url(#panel)" stroke="#334155"/>
+    <rect x="96" y="198" width="94" height="32" rx="16" fill="#14B8A6"/>
+    <text x="121" y="220" fill="#052E16" font-family="Segoe UI, Inter, sans-serif" font-size="16" font-weight="700">Core</text>
+    <text x="96" y="270" fill="#F3F4F6" font-family="Segoe UI, Inter, sans-serif" font-size="30" font-weight="700">Applications</text>
+    <text x="96" y="310" fill="#CBD5E1" font-family="Segoe UI, Inter, sans-serif" font-size="19">Track each role, edit details in one modal, and generate resume</text>
+    <text x="96" y="338" fill="#CBD5E1" font-family="Segoe UI, Inter, sans-serif" font-size="19">and cover letter versions without leaving the application context.</text>
+    <text x="96" y="372" fill="#94A3B8" font-family="Segoe UI, Inter, sans-serif" font-size="17">Great for active job searches with multiple companies at once.</text>
+  </g>
+
+  <g>
+    <rect x="660" y="170" width="548" height="228" rx="16" fill="url(#panel)" stroke="#334155"/>
+    <rect x="684" y="198" width="124" height="32" rx="16" fill="#22C55E"/>
+    <text x="709" y="220" fill="#052E16" font-family="Segoe UI, Inter, sans-serif" font-size="16" font-weight="700">Content</text>
+    <text x="684" y="270" fill="#F3F4F6" font-family="Segoe UI, Inter, sans-serif" font-size="30" font-weight="700">Experience Data</text>
+    <text x="684" y="310" fill="#CBD5E1" font-family="Segoe UI, Inter, sans-serif" font-size="19">Profile, work history, skills, summaries, and certifications live here.</text>
+    <text x="684" y="338" fill="#CBD5E1" font-family="Segoe UI, Inter, sans-serif" font-size="19">You write this once, then reuse it across every application.</text>
+    <text x="684" y="372" fill="#94A3B8" font-family="Segoe UI, Inter, sans-serif" font-size="17">Ideal for professionals with deep or varied career history.</text>
+  </g>
+
+  <g>
+    <rect x="72" y="432" width="548" height="228" rx="16" fill="url(#panel)" stroke="#334155"/>
+    <rect x="96" y="460" width="102" height="32" rx="16" fill="#3B82F6"/>
+    <text x="121" y="482" fill="#0B1F4D" font-family="Segoe UI, Inter, sans-serif" font-size="16" font-weight="700">Output</text>
+    <text x="96" y="532" fill="#F3F4F6" font-family="Segoe UI, Inter, sans-serif" font-size="30" font-weight="700">Templates + Lenses</text>
+    <text x="96" y="572" fill="#CBD5E1" font-family="Segoe UI, Inter, sans-serif" font-size="19">Build custom resume and cover letter templates, then save lenses</text>
+    <text x="96" y="600" fill="#CBD5E1" font-family="Segoe UI, Inter, sans-serif" font-size="19">to tailor the same source data for different roles quickly.</text>
+    <text x="96" y="634" fill="#94A3B8" font-family="Segoe UI, Inter, sans-serif" font-size="17">Best when you apply across adjacent role types.</text>
+  </g>
+
+  <g>
+    <rect x="660" y="432" width="548" height="228" rx="16" fill="url(#panel)" stroke="#334155"/>
+    <rect x="684" y="460" width="82" height="32" rx="16" fill="#F59E0B"/>
+    <text x="709" y="482" fill="#422006" font-family="Segoe UI, Inter, sans-serif" font-size="16" font-weight="700">Ops</text>
+    <text x="684" y="532" fill="#F3F4F6" font-family="Segoe UI, Inter, sans-serif" font-size="30" font-weight="700">Settings + Backups</text>
+    <text x="684" y="572" fill="#CBD5E1" font-family="Segoe UI, Inter, sans-serif" font-size="19">Configure data directory, export/import full data, and keep rolling</text>
+    <text x="684" y="600" fill="#CBD5E1" font-family="Segoe UI, Inter, sans-serif" font-size="19">backups. Useful for screenshot datasets and machine migration.</text>
+    <text x="684" y="634" fill="#94A3B8" font-family="Segoe UI, Inter, sans-serif" font-size="17">Everything runs local-first with SQLite.</text>
+  </g>
+</svg>
