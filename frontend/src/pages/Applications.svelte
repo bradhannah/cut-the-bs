@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import {
     listApplications,
     searchApplications,
@@ -18,6 +18,8 @@
     createExport,
     overwriteExport,
     openExportFile,
+    openFile,
+    prepareApplicationUploadFolder,
     parseTemplateVariables,
     getApplicationPromptValues,
     saveApplicationPromptValues,
@@ -37,13 +39,14 @@
   import LoadingSpinner from "../components/LoadingSpinner.svelte";
   import { formatDate, formatTimestamp } from "../services/dateFormat";
 
-  type GenerationMode = "resume" | "cover_letter" | "both";
+  type GenerationMode = "resume" | "cover_letter";
   type VersionMode = "new" | "overwrite_latest";
   type GenerationVersionChoice = {
     resume: VersionMode;
     cover: VersionMode;
   };
   type ListFilterMode = "all" | "active";
+  type EditorMode = "view" | "edit";
   type TimelineEntry = {
     id: string;
     from_status: string;
@@ -53,7 +56,7 @@
   };
 
   let applications: JobApplication[] = [];
-  let visibleApplications: JobApplication[] = [];
+  let visibleApplications: JobApplication[];
   let loading = true;
   let searchQuery = "";
   let searchTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -69,6 +72,8 @@
   let profile: UserProfile | null = null;
 
   let openingExportID: number | null = null;
+  let openingUploadFolderApplicationID: number | null = null;
+  let editorMode: EditorMode = "view";
 
   let showEditor = false;
   let creating = false;
@@ -79,6 +84,8 @@
   let formCompanyName = "";
   let formPositionTitle = "";
   let formJobPostingURL = "";
+  let formApplicationURL = "";
+  let formResearchURL = "";
   let formDateApplied = "";
   let formStatus = "Applied";
   let formFitIndicator = "";
@@ -88,7 +95,7 @@
   let formNotes = "";
 
   let historyEntries: StatusChange[] = [];
-  let timelineEntries: TimelineEntry[] = [];
+  let timelineEntries: TimelineEntry[];
   let historyLoading = false;
 
   let selectedResumeTemplateID: number | null = null;
@@ -98,6 +105,7 @@
   let promptValues: Record<string, string> = {};
   let loadingPromptFields = false;
   let generatingDocuments = false;
+  let preparingUploadFolder = false;
 
   const inactiveStatuses = new Set([
     "Offer Accepted",
@@ -112,9 +120,9 @@
   let versionChoiceNeedsCover = false;
   let versionChoiceResume: VersionMode = "overwrite_latest";
   let versionChoiceCover: VersionMode = "overwrite_latest";
-  let versionChoiceResolver:
-    | ((value: GenerationVersionChoice | null) => void)
-    | null = null;
+  // eslint-disable-next-line no-unused-vars
+  let versionChoiceResolver: ((result: GenerationVersionChoice | null) => void) | null = null;
+  let handlingHashDeepLink = false;
 
   const autoBoundVariableNames = new Set([
     "company_name",
@@ -139,7 +147,101 @@
 
   onMount(async () => {
     await Promise.all([loadApplications(), loadReferenceData()]);
+    await openDeepLinkedApplicationIfPresent();
+    window.addEventListener("hashchange", handleHashChange);
   });
+
+  onDestroy(() => {
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+    window.removeEventListener("hashchange", handleHashChange);
+  });
+
+  function handleHashChange(): void {
+    if (!window.location.hash.startsWith("#/applications")) {
+      return;
+    }
+
+    void openDeepLinkedApplicationIfPresent();
+  }
+
+  function parseApplicationsHash(): URLSearchParams {
+    const hash = window.location.hash || "";
+    const queryStart = hash.indexOf("?");
+    if (queryStart < 0) {
+      return new URLSearchParams();
+    }
+    return new URLSearchParams(hash.slice(queryStart + 1));
+  }
+
+  function setApplicationHash(mode: EditorMode, applicationID: number): void {
+    const params = parseApplicationsHash();
+    params.set("app", String(applicationID));
+    if (mode === "edit") {
+      params.set("mode", "edit");
+    } else {
+      params.delete("mode");
+    }
+
+    const nextHash = `#/applications?${params.toString()}`;
+    if (window.location.hash !== nextHash) {
+      window.history.replaceState(null, "", nextHash);
+    }
+  }
+
+  function clearApplicationHash(): void {
+    if (!window.location.hash.startsWith("#/applications")) {
+      return;
+    }
+
+    const params = parseApplicationsHash();
+    params.delete("app");
+    params.delete("mode");
+    const query = params.toString();
+    const nextHash = query ? `#/applications?${query}` : "#/applications";
+    if (window.location.hash !== nextHash) {
+      window.history.replaceState(null, "", nextHash);
+    }
+  }
+
+  async function openDeepLinkedApplicationIfPresent(): Promise<void> {
+    if (handlingHashDeepLink) {
+      return;
+    }
+
+    const params = parseApplicationsHash();
+    const appRaw = params.get("app");
+    if (!appRaw) {
+      return;
+    }
+
+    const appID = Number.parseInt(appRaw, 10);
+    if (Number.isNaN(appID) || appID <= 0) {
+      return;
+    }
+
+    const targetApp = applications.find((app) => app.id === appID);
+    if (!targetApp) {
+      return;
+    }
+
+    const mode = params.get("mode") === "edit" ? "edit" : "view";
+    if (showEditor && editingApp?.id === appID && editorMode === mode) {
+      return;
+    }
+
+    handlingHashDeepLink = true;
+    try {
+      if (mode === "edit") {
+        await openEditEditor(targetApp);
+      } else {
+        await openViewEditor(targetApp);
+      }
+    } finally {
+      handlingHashDeepLink = false;
+    }
+  }
 
   async function loadReferenceData(): Promise<void> {
     try {
@@ -224,12 +326,15 @@
 
   function openCreateEditor(): void {
     creating = true;
+    editorMode = "edit";
     editingApp = null;
     showEditor = true;
 
     formCompanyName = "";
     formPositionTitle = "";
     formJobPostingURL = "";
+    formApplicationURL = "";
+    formResearchURL = "";
     formDateApplied = new Date().toISOString().slice(0, 10);
     formStatus = defaultStatus();
     formFitIndicator = "";
@@ -240,13 +345,15 @@
 
     historyEntries = [];
     resetGenerationState();
-    void loadPromptFields();
+    clearApplicationHash();
   }
 
   function applyAppToForm(app: JobApplication): void {
     formCompanyName = app.company_name;
     formPositionTitle = app.position_title;
     formJobPostingURL = app.job_posting_url || "";
+    formApplicationURL = app.application_url || "";
+    formResearchURL = app.research_url || "";
     formDateApplied = app.date_applied;
     formStatus = app.status;
     formFitIndicator = app.fit_indicator;
@@ -287,11 +394,13 @@
     }
   }
 
-  async function openEditEditor(app: JobApplication): Promise<void> {
+  async function openViewEditor(app: JobApplication): Promise<void> {
     creating = false;
+    editorMode = "view";
     editingApp = app;
     applyAppToForm(app);
     showEditor = true;
+    setApplicationHash("view", app.id);
 
     selectedResumeTemplateID =
       guessResumeTemplateFromExport(app.resume_export_id) ||
@@ -305,13 +414,26 @@
     await Promise.all([loadHistory(), loadPromptFields()]);
   }
 
+  async function openEditEditor(app: JobApplication): Promise<void> {
+    creating = false;
+    editorMode = "edit";
+    editingApp = app;
+    applyAppToForm(app);
+    showEditor = true;
+    setApplicationHash("edit", app.id);
+
+    await loadHistory();
+  }
+
   function closeEditor(): void {
     showEditor = false;
     creating = false;
+    editorMode = "view";
     editingApp = null;
     historyEntries = [];
     saving = false;
     deleting = false;
+    clearApplicationHash();
     resetGenerationState();
   }
 
@@ -322,6 +444,8 @@
       company_name: formCompanyName.trim(),
       position_title: formPositionTitle.trim(),
       job_posting_url: formJobPostingURL.trim(),
+      application_url: formApplicationURL.trim(),
+      research_url: formResearchURL.trim(),
       date_applied: formDateApplied,
       fit_indicator: formFitIndicator,
       resume_export_id: formResumeExportID,
@@ -354,8 +478,6 @@
 
     saving = true;
     try {
-      let savedApp: JobApplication | null = null;
-
       if (creating) {
         let created = await createApplication(
           buildApplicationInput({
@@ -365,7 +487,6 @@
         if (formStatus && formStatus !== created.status) {
           created = await updateApplicationStatus(created.id, formStatus);
         }
-        savedApp = created;
         editingApp = created;
         creating = false;
       } else if (editingApp) {
@@ -378,23 +499,11 @@
         if (formStatus && formStatus !== editingApp.status) {
           updated = await updateApplicationStatus(updated.id, formStatus);
         }
-        savedApp = updated;
         editingApp = updated;
-      }
-
-      if (savedApp && effectiveCoverTemplateID) {
-        await saveApplicationPromptValues(
-          savedApp.id,
-          effectiveCoverTemplateID,
-          buildPromptValuesToSave()
-        );
       }
 
       await reloadPageData();
       await loadHistory();
-      if (editingApp && formCoverLetterTemplateID) {
-        await loadPromptFields();
-      }
     } catch {
       // Toast already shown
     } finally {
@@ -441,12 +550,85 @@
     }
   }
 
+  async function openUploadFolderForApplication(app: JobApplication): Promise<void> {
+    if (!app.resume_export_id && !app.cover_letter_latest_export_id) {
+      addToast("info", "No generated documents linked for this application");
+      return;
+    }
+
+    openingUploadFolderApplicationID = app.id;
+    try {
+      const folderPath = await prepareApplicationUploadFolder(app.id);
+      await openFile(folderPath);
+    } catch {
+      // Toast already shown
+    } finally {
+      if (openingUploadFolderApplicationID === app.id) {
+        openingUploadFolderApplicationID = null;
+      }
+    }
+  }
+
+  async function prepareUploadFolder(): Promise<void> {
+    if (creating || !editingApp) {
+      addToast("info", "Save this application before preparing an upload folder");
+      return;
+    }
+
+    if (
+      formResumeExportID !== editingApp.resume_export_id ||
+      formCoverLetterLatestExportID !== editingApp.cover_letter_latest_export_id
+    ) {
+      addToast("info", "Save linked-document changes before preparing the upload folder");
+      return;
+    }
+
+    if (!formResumeExportID && !formCoverLetterLatestExportID) {
+      addToast("info", "Generate a resume or cover letter first");
+      return;
+    }
+
+    preparingUploadFolder = true;
+    try {
+      const folderPath = await prepareApplicationUploadFolder(editingApp.id);
+      await openFile(folderPath);
+      addToast("success", "Upload folder is ready");
+    } catch {
+      // Toast already shown
+    } finally {
+      preparingUploadFolder = false;
+    }
+  }
+
   function openJobPostingURL(url: string): void {
     const trimmed = url.trim();
     if (!trimmed) {
       return;
     }
     BrowserOpenURL(trimmed);
+  }
+
+  function friendlyURLLabel(rawURL: string, fallback: string): string {
+    const trimmed = rawURL.trim();
+    if (!trimmed) {
+      return fallback;
+    }
+
+    try {
+      const parsed = new URL(trimmed);
+      const host = parsed.hostname.replace(/^www\./, "");
+      const path = parsed.pathname === "/" ? "" : parsed.pathname;
+      const full = `${host}${path}`;
+      if (full.length > 56) {
+        return `${full.slice(0, 53)}...`;
+      }
+      return full;
+    } catch {
+      if (trimmed.length > 56) {
+        return `${trimmed.slice(0, 53)}...`;
+      }
+      return trimmed;
+    }
   }
 
   function exportLabel(exportID: number | null): string {
@@ -567,9 +749,8 @@
       if (isAutoBoundVariable(trimmedKey) || removedVariableNames.has(trimmedKey)) {
         continue;
       }
-      const trimmedValue = value.trim();
-      if (trimmedValue) {
-        valuesToSave[key] = trimmedValue;
+      if (value.trim()) {
+        valuesToSave[key] = value;
       }
     }
     return valuesToSave;
@@ -658,11 +839,8 @@
   async function chooseVersionModes(
     mode: GenerationMode
   ): Promise<GenerationVersionChoice | null> {
-    const needsResumeChoice =
-      (mode === "resume" || mode === "both") && !!formResumeExportID;
-    const needsCoverChoice =
-      (mode === "cover_letter" || mode === "both") &&
-      !!formCoverLetterLatestExportID;
+    const needsResumeChoice = mode === "resume" && !!formResumeExportID;
+    const needsCoverChoice = mode === "cover_letter" && !!formCoverLetterLatestExportID;
 
     if (!needsResumeChoice && !needsCoverChoice) {
       return {
@@ -682,10 +860,15 @@
     });
   }
 
-  async function generateDocuments(mode: GenerationMode): Promise<void> {
+  async function generateDocuments(mode: GenerationMode): Promise<boolean> {
     if (creating || !editingApp) {
       addToast("info", "Save this application before generating documents");
-      return;
+      return false;
+    }
+
+    if (editorMode !== "view") {
+      addToast("info", "Switch to view mode to generate documents");
+      return false;
     }
 
     const effectiveCoverTemplateID =
@@ -694,32 +877,32 @@
       formCoverLetterTemplateID = effectiveCoverTemplateID;
     }
 
-    if ((mode === "resume" || mode === "both") && !selectedResumeTemplateID) {
+    if (mode === "resume" && !selectedResumeTemplateID) {
       addToast("error", "Select a resume template");
-      return;
+      return false;
     }
-    if ((mode === "resume" || mode === "both") && !selectedLensID) {
+    if (mode === "resume" && !selectedLensID) {
       addToast("error", "Select a lens for resume generation");
-      return;
+      return false;
     }
-    if ((mode === "cover_letter" || mode === "both") && !effectiveCoverTemplateID) {
+    if (mode === "cover_letter" && !effectiveCoverTemplateID) {
       addToast("error", "Select a cover letter template");
-      return;
+      return false;
     }
 
-    if (mode === "cover_letter" || mode === "both") {
+    if (mode === "cover_letter") {
       for (const p of promptPrompts) {
         const key = promptKey(p);
         if (p.required && !promptValues[key]?.trim()) {
           addToast("error", `Required field missing: ${p.prompt_text}`);
-          return;
+          return false;
         }
       }
     }
 
     const versionChoice = await chooseVersionModes(mode);
     if (!versionChoice) {
-      return;
+      return false;
     }
 
     generatingDocuments = true;
@@ -727,7 +910,7 @@
       let nextResumeExportID = formResumeExportID;
       let nextCoverLatestExportID = formCoverLetterLatestExportID;
 
-      if (mode === "resume" || mode === "both") {
+      if (mode === "resume") {
         const lensSelections = await getLensExportSelections(selectedLensID!);
         const resumeRequest: ExportRequest = {
           ...lensSelections,
@@ -741,7 +924,7 @@
         nextResumeExportID = resumeExport.id;
       }
 
-      if (mode === "cover_letter" || mode === "both") {
+      if (mode === "cover_letter") {
         const autoSubs = buildAutoBoundSubstitutions();
         const substitutions: Record<string, string> = {};
 
@@ -749,9 +932,8 @@
           if (removedVariableNames.has(key.trim())) {
             continue;
           }
-          const trimmed = value.trim();
-          if (trimmed) {
-            substitutions[key] = trimmed;
+          if (value.trim()) {
+            substitutions[key] = value;
           }
         }
 
@@ -808,8 +990,10 @@
       applyAppToForm(updated);
       await Promise.all([reloadPageData(), loadHistory()]);
       addToast("success", "Documents generated for this application");
+      return true;
     } catch {
       // Toast already shown
+      return false;
     } finally {
       generatingDocuments = false;
     }
@@ -823,8 +1007,8 @@
   </div>
 
   <p class="page-description">
-    Read-only list view with quick access to latest documents. Edit an
-    application to update details and generate new versions.
+    Keep details clean in edit mode, then generate and open documents from each
+    application's read-only view.
   </p>
 
   <div class="search-bar">
@@ -948,9 +1132,23 @@
                 </div>
               </td>
               <td>
-                <button class="btn btn-primary btn-small" on:click={() => openEditEditor(app)}>
-                  Edit
-                </button>
+                <div class="row-actions">
+                  <button
+                    class="btn btn-ghost btn-small"
+                    on:click={() => openUploadFolderForApplication(app)}
+                    disabled={
+                      (!app.resume_export_id && !app.cover_letter_latest_export_id) ||
+                      openingUploadFolderApplicationID === app.id
+                    }
+                  >
+                    {openingUploadFolderApplicationID === app.id
+                      ? "Opening..."
+                      : "Open Folder"}
+                  </button>
+                  <button class="btn btn-primary btn-small" on:click={() => openViewEditor(app)}>
+                    Open
+                  </button>
+                </div>
               </td>
             </tr>
           {/each}
@@ -965,15 +1163,345 @@
   <div class="overlay" on:click|self={closeEditor}>
     <div class="editor-dialog">
       <div class="editor-header">
-        <h3>{creating ? "New Application" : `Edit: ${formCompanyName || "Application"}`}</h3>
-        <div class="editor-header-actions">
-          <button class="btn btn-primary" on:click={saveEditor} disabled={saving}>
-            {saving ? "Saving..." : "Save Changes"}
-          </button>
-          <button class="btn btn-ghost btn-small" on:click={closeEditor}>Close</button>
-        </div>
+        <h3>
+          {#if creating}
+            New Application
+          {:else if editorMode === "view"}
+            {editingApp?.company_name} - {editingApp?.position_title}
+          {:else}
+            Edit: {formCompanyName || "Application"}
+          {/if}
+        </h3>
       </div>
 
+      {#if editorMode === "view" && editingApp}
+        <div class="viewer-header-actions">
+          <button
+            class="btn btn-secondary"
+            on:click={() => openEditEditor(editingApp)}
+            disabled={generatingDocuments || preparingUploadFolder}
+          >
+            Edit Application
+          </button>
+          <button
+            class="btn btn-ghost"
+            on:click={closeEditor}
+            disabled={generatingDocuments || preparingUploadFolder}
+          >
+            Close
+          </button>
+        </div>
+
+        <div class="viewer-body">
+          <section class="editor-section editor-main viewer-main">
+            <div class="viewer-grid">
+              <div class="viewer-item">
+                <p class="viewer-label">Company</p>
+                <p class="viewer-value">{editingApp.company_name}</p>
+              </div>
+              <div class="viewer-item">
+                <p class="viewer-label">Position</p>
+                <p class="viewer-value">{editingApp.position_title}</p>
+              </div>
+              <div class="viewer-item">
+                <p class="viewer-label">Date Applied</p>
+                <p class="viewer-value">{formatDate(editingApp.date_applied, "day")}</p>
+              </div>
+              <div class="viewer-item">
+                <p class="viewer-label">Status</p>
+                <p class="viewer-value">{editingApp.status}</p>
+              </div>
+              <div class="viewer-item">
+                <p class="viewer-label">Fit</p>
+                <p class="viewer-value">{editingApp.fit_indicator || "Not set"}</p>
+              </div>
+              <div class="viewer-item viewer-item-wide">
+                <p class="viewer-label">Links</p>
+                <div class="viewer-link-list">
+                  <div class="viewer-link-row">
+                    <span class="viewer-link-kind">Job Posting</span>
+                    {#if editingApp.job_posting_url}
+                      <button
+                        class="viewer-link-btn"
+                        on:click={() => openJobPostingURL(editingApp.job_posting_url)}
+                        title={editingApp.job_posting_url}
+                      >
+                        {friendlyURLLabel(editingApp.job_posting_url, "Open job posting")}
+                      </button>
+                    {:else}
+                      <span class="viewer-link-empty">Not provided</span>
+                    {/if}
+                  </div>
+
+                  <div class="viewer-link-row">
+                    <span class="viewer-link-kind">Application</span>
+                    {#if editingApp.application_url}
+                      <button
+                        class="viewer-link-btn"
+                        on:click={() => openJobPostingURL(editingApp.application_url)}
+                        title={editingApp.application_url}
+                      >
+                        {friendlyURLLabel(editingApp.application_url, "Open application URL")}
+                      </button>
+                    {:else}
+                      <span class="viewer-link-empty">Not provided</span>
+                    {/if}
+                  </div>
+
+                  <div class="viewer-link-row">
+                    <span class="viewer-link-kind">Research</span>
+                    {#if editingApp.research_url}
+                      <button
+                        class="viewer-link-btn"
+                        on:click={() => openJobPostingURL(editingApp.research_url)}
+                        title={editingApp.research_url}
+                      >
+                        {friendlyURLLabel(editingApp.research_url, "Open research URL")}
+                      </button>
+                    {:else}
+                      <span class="viewer-link-empty">Not provided</span>
+                    {/if}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="details-divider"></div>
+
+            <div class="viewer-notes">
+              <h4>Notes</h4>
+              <p>{editingApp.notes?.trim() ? editingApp.notes : "No notes added yet."}</p>
+            </div>
+          </section>
+
+          <section class="editor-section editor-side viewer-side">
+            <h4>Status Timeline</h4>
+            {#if historyLoading}
+              <p class="hint">Loading history...</p>
+            {:else if timelineEntries.length === 0}
+              <p class="hint">No status history available.</p>
+            {:else}
+              <div class="timeline">
+                {#each timelineEntries as entry (entry.id)}
+                  <div class="timeline-entry">
+                    <span
+                      class="timeline-dot"
+                      style="background-color: {statusColor(entry.to_status)};"
+                    ></span>
+                    {#if entry.is_baseline}
+                      <span class="timeline-text">Created with status {entry.to_status}</span>
+                    {:else}
+                      <span class="timeline-text">{entry.from_status} &rarr; {entry.to_status}</span>
+                    {/if}
+                    <span class="timeline-date">{formatTimestamp(entry.changed_at)}</span>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </section>
+        </div>
+
+        <section class="editor-section documents-card">
+          <h4>Documents</h4>
+          <div class="documents-grid">
+            <div class="documents-generate">
+              <p class="documents-subhead">Generate</p>
+
+              <div class="group-grid">
+                <div class="form-field">
+                  <label class="form-label" for="view-gen-resume-template">Resume Template</label>
+                  <select
+                    id="view-gen-resume-template"
+                    class="form-input"
+                    bind:value={selectedResumeTemplateID}
+                  >
+                    <option value={null}>-- Select --</option>
+                    {#each resumeTemplates as t (t.id)}
+                      <option value={t.id}>{t.name}</option>
+                    {/each}
+                  </select>
+                </div>
+
+                <div class="form-field">
+                  <label class="form-label" for="view-gen-lens">Lens (required)</label>
+                  <select id="view-gen-lens" class="form-input" bind:value={selectedLensID}>
+                    <option value={null}>-- Select --</option>
+                    {#each lenses as lens (lens.id)}
+                      <option value={lens.id}>{lens.name}</option>
+                    {/each}
+                  </select>
+                </div>
+
+                <div class="form-field">
+                  <label class="form-label" for="view-cover-template">Cover Letter Template</label>
+                  <select
+                    id="view-cover-template"
+                    class="form-input"
+                    bind:value={formCoverLetterTemplateID}
+                    on:change={loadPromptFields}
+                  >
+                    {#if coverLetterTemplates.length === 0}
+                      <option value={null}>-- No Cover Letter Templates --</option>
+                    {:else}
+                      {#each coverLetterTemplates as t (t.id)}
+                        <option value={t.id}>{t.name}</option>
+                      {/each}
+                    {/if}
+                  </select>
+                </div>
+              </div>
+
+              <p class="hint generation-hint">
+                Company, Position, Signer Name, and Email are strongly bound. Phone is excluded.
+              </p>
+
+              {#if loadingPromptFields}
+                <p class="hint">Loading cover letter fields...</p>
+              {:else}
+                {#if promptVariables.length > 0}
+                  <h6 class="subhead">Template Variables</h6>
+                  {#each promptVariables as v (v.name)}
+                    <div class="form-field">
+                      <label class="form-label" for={`view-var-${v.name}`}>{prettyName(v.name)}</label>
+                      <input
+                        id={`view-var-${v.name}`}
+                        class="form-input"
+                        type="text"
+                        bind:value={promptValues[v.name]}
+                      />
+                    </div>
+                  {/each}
+                {/if}
+
+                {#if promptPrompts.length > 0}
+                  <h6 class="subhead">Prompted Fields</h6>
+                  {#each promptPrompts as p (promptKey(p))}
+                    <div class="form-field">
+                      <label class="form-label" for={`view-prompt-${promptKey(p)}`}>
+                        {p.prompt_text}{p.required ? " *" : ""}
+                      </label>
+                      {#if p.help_text}
+                        <p class="hint">{p.help_text}</p>
+                      {/if}
+                      {#if p.multiline}
+                        <textarea
+                          id={`view-prompt-${promptKey(p)}`}
+                          class="form-input form-textarea"
+                          rows="4"
+                          bind:value={promptValues[promptKey(p)]}
+                        />
+                      {:else}
+                        <input
+                          id={`view-prompt-${promptKey(p)}`}
+                          class="form-input"
+                          type="text"
+                          bind:value={promptValues[promptKey(p)]}
+                        />
+                      {/if}
+                    </div>
+                  {/each}
+                {/if}
+
+                {#if promptVariables.length === 0 && promptPrompts.length === 0}
+                  <p class="hint">No additional fields for this cover letter template.</p>
+                {/if}
+              {/if}
+
+              <div class="documents-generate-actions">
+                <button
+                  class="btn btn-primary"
+                  on:click={() => generateDocuments("resume")}
+                  disabled={generatingDocuments || saving || deleting || preparingUploadFolder}
+                >
+                  {generatingDocuments ? "Generating..." : "Generate Resume"}
+                </button>
+                <button
+                  class="btn btn-primary"
+                  on:click={() => generateDocuments("cover_letter")}
+                  disabled={generatingDocuments || saving || deleting || preparingUploadFolder}
+                >
+                  {generatingDocuments ? "Generating..." : "Generate Cover Letter"}
+                </button>
+              </div>
+            </div>
+
+            <div class="documents-output">
+              <p class="documents-subhead">Output</p>
+
+              <div
+                class="output-file-card"
+                class:output-file-card-ready={formResumeExportID !== null}
+              >
+                <div class="output-file-row">
+                  <div class="output-file-meta">
+                    <p class="output-file-label">Resume</p>
+                    <p class="output-file-name">{exportLabel(formResumeExportID)}</p>
+                    <p class="output-file-state">
+                      <span class="output-state-dot" class:ready={formResumeExportID !== null}></span>
+                      {formResumeExportID !== null ? "Generated" : "Not generated yet"}
+                    </p>
+                  </div>
+                  <button
+                    class="btn btn-ghost btn-small output-file-open"
+                    on:click={() => openLinkedExport(formResumeExportID, "resume")}
+                    disabled={formResumeExportID === null || openingExportID === formResumeExportID}
+                  >
+                    {formResumeExportID !== null && openingExportID === formResumeExportID
+                      ? "Opening..."
+                      : "Open"}
+                  </button>
+                </div>
+              </div>
+
+              <div
+                class="output-file-card"
+                class:output-file-card-ready={formCoverLetterLatestExportID !== null}
+              >
+                <div class="output-file-row">
+                  <div class="output-file-meta">
+                    <p class="output-file-label">Cover Letter</p>
+                    <p class="output-file-name">{exportLabel(formCoverLetterLatestExportID)}</p>
+                    <p class="output-file-state">
+                      <span
+                        class="output-state-dot"
+                        class:ready={formCoverLetterLatestExportID !== null}
+                      ></span>
+                      {formCoverLetterLatestExportID !== null ? "Generated" : "Not generated yet"}
+                    </p>
+                  </div>
+                  <button
+                    class="btn btn-ghost btn-small output-file-open"
+                    on:click={() => openLinkedExport(formCoverLetterLatestExportID, "cover letter")}
+                    disabled={
+                      formCoverLetterLatestExportID === null ||
+                      openingExportID === formCoverLetterLatestExportID
+                    }
+                  >
+                    {formCoverLetterLatestExportID !== null &&
+                    openingExportID === formCoverLetterLatestExportID
+                      ? "Opening..."
+                      : "Open"}
+                  </button>
+                </div>
+              </div>
+
+              <div class="details-divider output-divider"></div>
+
+              <button
+                class="btn btn-ghost output-folder-btn"
+                on:click={prepareUploadFolder}
+                disabled={
+                  generatingDocuments ||
+                  preparingUploadFolder ||
+                  (!formResumeExportID && !formCoverLetterLatestExportID)
+                }
+              >
+                {preparingUploadFolder ? "Opening Upload Folder..." : "Open Upload Folder"}
+              </button>
+            </div>
+          </div>
+        </section>
+      {:else}
       <div class="editor-body">
         <section class="editor-section editor-main">
           <h4>Application Details</h4>
@@ -1007,6 +1535,28 @@
                 type="url"
                 placeholder="https://company.com/jobs/..."
                 bind:value={formJobPostingURL}
+              />
+            </div>
+
+            <div class="form-field">
+              <label class="form-label" for="editor-application-url">Application URL</label>
+              <input
+                id="editor-application-url"
+                class="form-input"
+                type="url"
+                placeholder="https://company.com/candidate/portal/..."
+                bind:value={formApplicationURL}
+              />
+            </div>
+
+            <div class="form-field">
+              <label class="form-label" for="editor-research-url">Research URL</label>
+              <input
+                id="editor-research-url"
+                class="form-input"
+                type="url"
+                placeholder="https://notion.so/... or company/team research"
+                bind:value={formResearchURL}
               />
             </div>
 
@@ -1063,184 +1613,14 @@
 
           <div class="details-divider"></div>
 
-          <div class="group-card">
-            <div class="group-card-header">
-              <h5>Resume</h5>
-              <button
-                class="btn btn-secondary btn-small"
-                on:click={() => openLinkedExport(formResumeExportID, "resume")}
-                disabled={!formResumeExportID || openingExportID === formResumeExportID}
-              >
-                Open Resume
-              </button>
-            </div>
+          <p class="hint edit-mode-hint">
+            Generate resumes and cover letters from view mode to keep this editor focused on application details.
+          </p>
 
-            <div class="group-grid">
-              <div class="form-field">
-                <label class="form-label" for="editor-linked-resume">Linked Resume Export</label>
-                <select id="editor-linked-resume" class="form-input" bind:value={formResumeExportID}>
-                  <option value={null}>-- None --</option>
-                  {#each exports as ex (ex.id)}
-                    <option value={ex.id}>{exportLabel(ex.id)}</option>
-                  {/each}
-                </select>
-              </div>
-
-              <div class="form-field">
-                <label class="form-label" for="gen-resume-template">Resume Template</label>
-                <select
-                  id="gen-resume-template"
-                  class="form-input"
-                  bind:value={selectedResumeTemplateID}
-                >
-                  <option value={null}>-- Select --</option>
-                  {#each resumeTemplates as t (t.id)}
-                    <option value={t.id}>{t.name}</option>
-                  {/each}
-                </select>
-              </div>
-
-              <div class="form-field">
-                <label class="form-label" for="gen-lens">Lens (required)</label>
-                <select id="gen-lens" class="form-input" bind:value={selectedLensID}>
-                  <option value={null}>-- Select --</option>
-                  {#each lenses as lens (lens.id)}
-                    <option value={lens.id}>{lens.name}</option>
-                  {/each}
-                </select>
-              </div>
-            </div>
-
-            <div class="group-actions">
-              <button
-                class="btn btn-secondary"
-                on:click={() => generateDocuments("resume")}
-                disabled={creating || generatingDocuments}
-              >
-                {generatingDocuments ? "Generating..." : "Generate Resume"}
-              </button>
-            </div>
-          </div>
-
-          <div class="details-divider"></div>
-
-          <div class="group-card">
-            <div class="group-card-header">
-              <h5>Cover Letter</h5>
-              <button
-                class="btn btn-secondary btn-small"
-                on:click={() => openLinkedExport(formCoverLetterLatestExportID, "cover letter")}
-                disabled={
-                  !formCoverLetterLatestExportID ||
-                  openingExportID === formCoverLetterLatestExportID
-                }
-              >
-                Open Cover Letter
-              </button>
-            </div>
-
-            <div class="form-field">
-              <label class="form-label" for="editor-cover-template">Cover Letter Template</label>
-              <select
-                id="editor-cover-template"
-                class="form-input"
-                bind:value={formCoverLetterTemplateID}
-                on:change={loadPromptFields}
-              >
-                {#if coverLetterTemplates.length === 0}
-                  <option value={null}>-- No Cover Letter Templates --</option>
-                {:else}
-                  {#each coverLetterTemplates as t (t.id)}
-                    <option value={t.id}>{t.name}</option>
-                  {/each}
-                {/if}
-              </select>
-            </div>
-
-            <p class="hint">
-              Company, Position, Signer Name, and Email are strongly bound.
-              Phone is excluded.
-            </p>
-
-            {#if loadingPromptFields}
-              <p class="hint">Loading cover letter fields...</p>
-            {:else}
-              {#if promptVariables.length > 0}
-                <h6 class="subhead">Template Variables</h6>
-                {#each promptVariables as v (v.name)}
-                  <div class="form-field">
-                    <label class="form-label" for={`var-${v.name}`}>{prettyName(v.name)}</label>
-                    <input
-                      id={`var-${v.name}`}
-                      class="form-input"
-                      type="text"
-                      bind:value={promptValues[v.name]}
-                    />
-                  </div>
-                {/each}
-              {/if}
-
-              {#if promptPrompts.length > 0}
-                <h6 class="subhead">Prompted Fields</h6>
-                {#each promptPrompts as p (promptKey(p))}
-                  <div class="form-field">
-                    <label class="form-label" for={`prompt-${promptKey(p)}`}>
-                      {p.prompt_text}{p.required ? " *" : ""}
-                    </label>
-                    {#if p.help_text}
-                      <p class="hint">{p.help_text}</p>
-                    {/if}
-                    {#if p.multiline}
-                      <textarea
-                        id={`prompt-${promptKey(p)}`}
-                        class="form-input form-textarea"
-                        rows="4"
-                        bind:value={promptValues[promptKey(p)]}
-                      />
-                    {:else}
-                      <input
-                        id={`prompt-${promptKey(p)}`}
-                        class="form-input"
-                        type="text"
-                        bind:value={promptValues[promptKey(p)]}
-                      />
-                    {/if}
-                  </div>
-                {/each}
-              {/if}
-
-              {#if promptVariables.length === 0 && promptPrompts.length === 0}
-                <p class="hint">No additional fields for this cover letter template.</p>
-              {/if}
-            {/if}
-
-            <div class="group-actions">
-              <button
-                class="btn btn-secondary"
-                on:click={() => generateDocuments("cover_letter")}
-                disabled={creating || generatingDocuments}
-              >
-                {generatingDocuments ? "Generating..." : "Generate Cover Letter"}
-              </button>
-              <button
-                class="btn btn-primary"
-                on:click={() => generateDocuments("both")}
-                disabled={creating || generatingDocuments}
-              >
-                {generatingDocuments ? "Generating..." : "Generate Both"}
-              </button>
-            </div>
-          </div>
-
-          {#if creating}
-            <p class="hint">Save the application first to generate documents.</p>
-          {/if}
-
-          <div class="editor-actions">
-            <button class="btn btn-primary" on:click={saveEditor} disabled={saving}>
-              {saving ? "Saving..." : "Save Changes"}
-            </button>
-            {#if !creating}
+          {#if !creating}
+            <div class="danger-zone">
+              <p class="danger-title">Danger Zone</p>
+              <p class="hint danger-hint">Delete this application and linked generation references.</p>
               <button
                 class="btn btn-danger"
                 on:click={deleteFromEditor}
@@ -1248,8 +1628,8 @@
               >
                 {deleting ? "Deleting..." : "Delete Application"}
               </button>
-            {/if}
-          </div>
+            </div>
+          {/if}
         </section>
 
         <section class="editor-section editor-side">
@@ -1280,6 +1660,27 @@
           {/if}
         </section>
       </div>
+
+      <div class="editor-footer">
+        <div class="editor-footer-actions">
+          {#if !creating && editingApp}
+            <button
+              class="btn btn-secondary"
+              on:click={() => openViewEditor(editingApp)}
+              disabled={saving || deleting}
+            >
+              Back to View
+            </button>
+          {/if}
+          <button class="btn btn-cancel" on:click={closeEditor} disabled={saving || deleting}>
+            {creating ? "Cancel" : "Close"}
+          </button>
+          <button class="btn btn-primary" on:click={saveEditor} disabled={saving || deleting}>
+            {saving ? "Saving..." : creating ? "Create Application" : "Save Changes"}
+          </button>
+        </div>
+      </div>
+      {/if}
     </div>
   </div>
 {/if}
@@ -1508,6 +1909,13 @@
     align-items: center;
   }
 
+  .row-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
   .doc-mini-btn {
     min-width: 38px;
     height: 30px;
@@ -1561,17 +1969,143 @@
     margin-bottom: 12px;
   }
 
-  .editor-header-actions {
+  .editor-header h3 {
+    margin: 0;
+    color: #e0e0e0;
+    font-size: 1.05rem;
+  }
+
+  .viewer-header-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  .generation-hint {
+    margin-bottom: 10px;
+  }
+
+  .viewer-body {
+    display: grid;
+    grid-template-columns: 1.45fr 0.95fr;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .documents-card {
+    border-color: #34506b;
+    background: linear-gradient(180deg, #1e3042 0%, #1b2a3b 100%);
+  }
+
+  .documents-grid {
+    display: grid;
+    grid-template-columns: 1.45fr 0.95fr;
+    gap: 12px;
+    align-items: start;
+  }
+
+  .documents-generate,
+  .documents-output {
+    background: #162434;
+    border: 1px solid #2a3e53;
+    border-radius: 8px;
+    padding: 10px;
+  }
+
+  .documents-subhead {
+    margin: 0 0 8px;
+    color: #a0b0c0;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+  }
+
+  .documents-generate-actions {
+    margin-top: 12px;
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
   }
 
-  .editor-header h3 {
+  .documents-output {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .output-file-card {
+    background: #152231;
+    border: 1px solid #27405a;
+    border-radius: 8px;
+    padding: 9px 10px;
+  }
+
+  .output-file-card-ready {
+    border-color: #2d556f;
+  }
+
+  .output-file-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .output-file-meta {
+    min-width: 0;
+  }
+
+  .output-file-label {
     margin: 0;
-    color: #e0e0e0;
-    font-size: 1.05rem;
+    color: #8ba0b5;
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .output-file-name {
+    margin: 3px 0 0;
+    color: #cfe0f2;
+    font-size: 0.82rem;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+
+  .output-file-state {
+    margin: 5px 0 0;
+    color: #7690aa;
+    font-size: 0.74rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .output-state-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #6b7f94;
+  }
+
+  .output-state-dot.ready {
+    background: #50c878;
+  }
+
+  .output-file-open {
+    min-width: 64px;
+  }
+
+  .output-divider {
+    margin: 2px 0 4px;
+  }
+
+  .output-folder-btn {
+    align-self: flex-start;
   }
 
   .editor-body {
@@ -1599,14 +2133,6 @@
     margin: 0 0 10px;
     color: #c0d0e0;
     font-size: 0.92rem;
-  }
-
-  .editor-section h5 {
-    margin: 0 0 8px;
-    color: #a0b0c0;
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
   }
 
   .subhead {
@@ -1676,33 +2202,103 @@
     border-top: 1px solid #2a3a4a;
   }
 
-  .group-card {
-    border: 1px solid #2b3e53;
-    background: #192636;
-    border-radius: 8px;
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .group-card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
-
   .group-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
   }
 
-  .group-actions {
-    display: flex;
-    flex-wrap: wrap;
+  .viewer-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .viewer-item {
+    background: #162434;
+    border: 1px solid #2a3e53;
+    border-radius: 8px;
+    padding: 10px;
+  }
+
+  .viewer-item-wide {
+    grid-column: 1 / -1;
+  }
+
+  .viewer-label {
+    margin: 0;
+    color: #7e93a9;
+    font-size: 0.72rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+
+  .viewer-value {
+    margin: 5px 0 0;
+    color: #d8e4f1;
+    font-size: 0.9rem;
+    line-height: 1.4;
+  }
+
+  .viewer-notes h4 {
+    margin: 0 0 8px;
+    color: #c0d0e0;
+    font-size: 0.88rem;
+  }
+
+  .viewer-link-list {
+    margin-top: 6px;
+    display: grid;
     gap: 8px;
+  }
+
+  .viewer-link-row {
+    display: grid;
+    grid-template-columns: 98px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+  }
+
+  .viewer-link-kind {
+    color: #8ba0b5;
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .viewer-link-empty {
+    color: #6f8399;
+    font-size: 0.8rem;
+  }
+
+  .viewer-link-btn {
+    justify-self: start;
+    max-width: 100%;
+    color: #7eafff;
+    font-size: 0.8rem;
+    text-decoration: none;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .viewer-link-btn:hover {
+    color: #a5c7ff;
+    text-decoration: underline;
+  }
+
+  .viewer-notes p {
+    margin: 0;
+    color: #b8cadc;
+    white-space: pre-wrap;
+    line-height: 1.45;
+    font-size: 0.84rem;
   }
 
   .fit-options {
@@ -1730,9 +2326,43 @@
     font-weight: 600;
   }
 
-  .editor-actions {
+  .edit-mode-hint {
+    margin-top: 2px;
+  }
+
+  .danger-zone {
+    margin-top: 10px;
+    border: 1px solid #5e353b;
+    background: #25181c;
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .danger-title {
+    margin: 0;
+    color: #e08a8a;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .danger-hint {
+    margin: 6px 0 10px;
+    color: #b9858c;
+  }
+
+  .editor-footer {
     margin-top: 12px;
+    border-top: 1px solid #2f4459;
+    padding-top: 12px;
     display: flex;
+    justify-content: flex-end;
+  }
+
+  .editor-footer-actions {
+    display: flex;
+    align-items: center;
     gap: 8px;
     flex-wrap: wrap;
   }
@@ -1897,14 +2527,40 @@
 
   @media (max-width: 980px) {
     .editor-body,
+    .viewer-body,
+    .documents-grid,
     .form-grid,
-    .group-grid {
+    .group-grid,
+    .viewer-grid {
       grid-template-columns: 1fr;
     }
 
-    .group-card-header {
+    .viewer-header-actions,
+    .editor-footer {
+      justify-content: flex-start;
+    }
+
+    .editor-footer-actions {
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .documents-generate-actions {
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .output-file-row {
       flex-direction: column;
       align-items: flex-start;
+    }
+
+    .output-file-open {
+      width: 100%;
+    }
+
+    .output-folder-btn {
+      width: 100%;
     }
   }
 </style>
