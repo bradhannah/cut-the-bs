@@ -1,6 +1,7 @@
 <script lang="ts">
   import Router, { link } from "svelte-spa-router";
   import active from "svelte-spa-router/active";
+  import Home from "./pages/Home.svelte";
   import WorkHistory from "./pages/WorkHistory.svelte";
   import Skills from "./pages/Skills.svelte";
   import Education from "./pages/Education.svelte";
@@ -9,6 +10,7 @@
   import CoreExpertise from "./pages/CoreExpertise.svelte";
   import Export from "./pages/Export.svelte";
   import Applications from "./pages/Applications.svelte";
+  import ApplicationHelper from "./pages/ApplicationHelper.svelte";
   import Lenses from "./pages/Lenses.svelte";
   import Settings from "./pages/Settings.svelte";
   import TemplateList from "./pages/TemplateList.svelte";
@@ -18,7 +20,7 @@
   import ZoomWidget from "./components/ZoomWidget.svelte";
 
   const routes = {
-    "/": Applications,
+    "/": Home,
     "/work-history": WorkHistory,
     "/skills": Skills,
     "/education": Education,
@@ -28,6 +30,7 @@
     "/lenses": Lenses,
     "/export": Export,
     "/applications": Applications,
+    "/helper": ApplicationHelper,
     "/templates": TemplateList,
     "/templates/:id/builder": TemplateBuilder,
     "/settings": Settings,
@@ -37,18 +40,21 @@
     path: string;
     label: string;
     primary?: boolean;
+    dividerAfter?: boolean;
   }
 
   const navItems: NavItem[] = [
-    { path: "/", label: "Applications", primary: true },
+    { path: "/", label: "Home", primary: true },
+    { path: "/applications", label: "Applications", primary: true },
+    { path: "/helper", label: "Application Helper", dividerAfter: true },
     { path: "/templates", label: "Templates" },
+    { path: "/lenses", label: "Lenses", dividerAfter: true },
     { path: "/work-history", label: "Work History" },
     { path: "/skills", label: "Skills" },
     { path: "/education", label: "Education" },
     { path: "/summaries", label: "Summaries" },
     { path: "/descriptors", label: "Role Descriptors" },
-    { path: "/core-expertise", label: "Core Expertise" },
-    { path: "/lenses", label: "Lenses" },
+    { path: "/core-expertise", label: "Core Expertise", dividerAfter: true },
     { path: "/export", label: "Export" },
     { path: "/settings", label: "Settings" },
   ];
@@ -59,23 +65,28 @@
     <div class="sidebar-header">
       <h1>Cut the BS</h1>
     </div>
-    <ul class="nav-list">
-      {#each navItems as item (item.path)}
-        <li>
-          <a
-            class:primary-link={item.primary}
-            href={"#" + item.path}
-            use:link
-            use:active={{ path: item.path, className: "active" }}
-          >
-            {item.label}
-          </a>
-        </li>
-        {#if item.primary}
-          <li class="nav-divider" aria-hidden="true"></li>
-        {/if}
-      {/each}
-    </ul>
+    <div class="sidebar-nav-wrap">
+      <ul class="nav-list">
+        {#each navItems as item (item.path)}
+          <li>
+            <a
+              class:primary-link={item.primary}
+              href={"#" + item.path}
+              use:link
+              use:active={{ path: item.path, className: "active" }}
+            >
+              {item.label}
+            </a>
+          </li>
+          {#if item.dividerAfter}
+            <li class="nav-divider" aria-hidden="true"></li>
+          {/if}
+        {/each}
+      </ul>
+    </div>
+    <div class="sidebar-footer">
+      <ZoomWidget />
+    </div>
   </nav>
   <div class="main-column">
     <main class="content">
@@ -84,7 +95,6 @@
     <StatusBar />
   </div>
   <Toast />
-  <ZoomWidget />
 </div>
 
 <style>
@@ -101,6 +111,12 @@
     border-right: 1px solid #2a3a4a;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-nav-wrap {
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
   }
 
@@ -121,6 +137,12 @@
     list-style: none;
     margin: 0;
     padding: 8px 0;
+  }
+
+  .sidebar-footer {
+    border-top: 1px solid #2a3a4a;
+    padding: 8px;
+    background-color: #182231;
   }
 
   .nav-list li {

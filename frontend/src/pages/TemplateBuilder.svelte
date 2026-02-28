@@ -33,6 +33,17 @@
   let metaDescription = "";
   let loadedTemplateID: number | null = null;
   let metaDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let builderPanelsEl: HTMLDivElement | null = null;
+  let propertiesPanelWidth = 420;
+  let resizingPropertiesPanel = false;
+  let resizeStartX = 0;
+  let resizeStartWidth = 0;
+
+  const palettePanelWidth = 240;
+  const propertiesPanelMinWidth = 300;
+  const canvasPanelMinWidth = 320;
+  const panelResizerWidth = 10;
+  const propertiesWidthStorageKey = "template-builder-properties-width";
 
   $: templateId = params.id ? parseInt(params.id, 10) : null;
   $: isReadOnly = $builderReadOnly;
@@ -44,6 +55,16 @@
   }
 
   onMount(async () => {
+    const storedPropertiesWidth = window.localStorage.getItem(propertiesWidthStorageKey);
+    if (storedPropertiesWidth) {
+      const parsedWidth = Number.parseInt(storedPropertiesWidth, 10);
+      if (!Number.isNaN(parsedWidth)) {
+        propertiesPanelWidth = parsedWidth;
+      }
+    }
+
+    window.addEventListener("resize", clampPropertiesPanelToViewport);
+
     if (!templateId) {
       error = "No template ID provided.";
       loading = false;
@@ -54,8 +75,17 @@
 
   onDestroy(() => {
     if (metaDebounceTimer) clearTimeout(metaDebounceTimer);
+    stopResizingPropertiesPanel();
+    window.removeEventListener("resize", clampPropertiesPanelToViewport);
     resetBuilderStores();
   });
+
+  $: if (builderPanelsEl) {
+    const clamped = clampPropertiesWidth(propertiesPanelWidth);
+    if (clamped !== propertiesPanelWidth) {
+      propertiesPanelWidth = clamped;
+    }
+  }
 
   function builderModeFromHash(): "edit" | "view" {
     const hash = window.location.hash || "";
@@ -115,6 +145,80 @@
     metaDebounceTimer = setTimeout(() => {
       saveMetadata();
     }, 350);
+  }
+
+  function clampPropertiesWidth(nextWidth: number): number {
+    if (!builderPanelsEl) {
+      return Math.max(nextWidth, propertiesPanelMinWidth);
+    }
+
+    const containerWidth = builderPanelsEl.clientWidth;
+    const layoutMaxWidth =
+      containerWidth - palettePanelWidth - canvasPanelMinWidth - panelResizerWidth;
+    const maxAllowedWidth = Math.max(propertiesPanelMinWidth, layoutMaxWidth);
+    return Math.min(Math.max(nextWidth, propertiesPanelMinWidth), maxAllowedWidth);
+  }
+
+  function clampPropertiesPanelToViewport(): void {
+    propertiesPanelWidth = clampPropertiesWidth(propertiesPanelWidth);
+  }
+
+  function savePropertiesWidthPreference(): void {
+    window.localStorage.setItem(propertiesWidthStorageKey, String(Math.round(propertiesPanelWidth)));
+  }
+
+  function onPropertiesResizerMouseDown(event: MouseEvent): void {
+    event.preventDefault();
+    resizeStartX = event.clientX;
+    resizeStartWidth = propertiesPanelWidth;
+    resizingPropertiesPanel = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", onPropertiesResizerMouseMove);
+    window.addEventListener("mouseup", onPropertiesResizerMouseUp);
+  }
+
+  function onPropertiesResizerMouseMove(event: MouseEvent): void {
+    if (!resizingPropertiesPanel) {
+      return;
+    }
+
+    const delta = resizeStartX - event.clientX;
+    propertiesPanelWidth = clampPropertiesWidth(resizeStartWidth + delta);
+  }
+
+  function onPropertiesResizerMouseUp(): void {
+    if (!resizingPropertiesPanel) {
+      return;
+    }
+
+    stopResizingPropertiesPanel();
+    savePropertiesWidthPreference();
+  }
+
+  function stopResizingPropertiesPanel(): void {
+    resizingPropertiesPanel = false;
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    window.removeEventListener("mousemove", onPropertiesResizerMouseMove);
+    window.removeEventListener("mouseup", onPropertiesResizerMouseUp);
+  }
+
+  function onPropertiesResizerKeyDown(event: KeyboardEvent): void {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+      return;
+    }
+
+    event.preventDefault();
+    const step = event.shiftKey ? 48 : 24;
+
+    if (event.key === "ArrowLeft") {
+      propertiesPanelWidth = clampPropertiesWidth(propertiesPanelWidth + step);
+    } else {
+      propertiesPanelWidth = clampPropertiesWidth(propertiesPanelWidth - step);
+    }
+
+    savePropertiesWidthPreference();
   }
 
   async function saveMetadata(): Promise<void> {
@@ -211,7 +315,7 @@
     </div>
   </div>
 
-  <div class="builder-panels">
+  <div class="builder-panels" bind:this={builderPanelsEl}>
     <div class="panel palette-panel">
       <Palette />
     </div>
@@ -220,7 +324,16 @@
       <Canvas />
     </div>
 
-    <div class="panel properties-panel">
+    <button
+      type="button"
+      class="panel-resizer"
+      class:resizing={resizingPropertiesPanel}
+      on:mousedown={onPropertiesResizerMouseDown}
+      on:keydown={onPropertiesResizerKeyDown}
+      aria-label="Resize properties panel"
+    ></button>
+
+    <div class="panel properties-panel" style={`width: ${propertiesPanelWidth}px; min-width: ${propertiesPanelWidth}px;`}>
       <Properties />
     </div>
   </div>
@@ -406,6 +519,7 @@
     /* Fill remaining height: viewport minus sidebar-header area, builder-header, and status bar */
     height: calc(100vh - 120px);
     margin: 0 -24px -24px; /* bleed into .content padding */
+    min-width: 0;
   }
 
   .panel {
@@ -429,15 +543,51 @@
   /* Canvas — flexible center */
   .canvas-panel {
     flex: 1;
-    min-width: 0;
+    min-width: 320px;
     background-color: #1e2d3d;
     overflow: hidden;
   }
 
-  /* Properties — fixed 300px right */
+  .panel-resizer {
+    position: relative;
+    width: 10px;
+    min-width: 10px;
+    cursor: col-resize;
+    padding: 0;
+    border: none;
+    appearance: none;
+    background-color: #1a2332;
+    border-left: 1px solid #2a3a4a;
+    border-right: 1px solid #2a3a4a;
+  }
+
+  .panel-resizer::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 12px;
+    bottom: 12px;
+    width: 2px;
+    transform: translateX(-50%);
+    border-radius: 2px;
+    background-color: #42576d;
+    transition: background-color 0.12s;
+  }
+
+  .panel-resizer:hover::before,
+  .panel-resizer.resizing::before,
+  .panel-resizer:focus-visible::before {
+    background-color: #6f92b8;
+  }
+
+  .panel-resizer:focus-visible {
+    outline: 2px solid #4a8af4;
+    outline-offset: -2px;
+  }
+
+  /* Properties — resizable right */
   .properties-panel {
-    width: 300px;
-    min-width: 300px;
+    flex: 0 0 auto;
     background-color: #1a2332;
     border-left: 1px solid #2a3a4a;
     border-right: none;

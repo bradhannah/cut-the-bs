@@ -1,6 +1,8 @@
 # cut-the-bs
 
-`cut-the-bs` is a desktop app for people who tailor resumes and cover letters often.
+"Cut the Bullsh*t" (`cut-the-bs`) is a desktop app for people who tailor resumes and cover letters often.
+
+It is called that because it helps you cut the unimportant bullshit from your resume and cover letter so hiring teams can see the real you.
 
 It is built for practical job-search work: keep your experience data in one place, target each application cleanly, and generate role-specific documents without copy-paste chaos.
 
@@ -109,6 +111,52 @@ This keeps personal data and demo data fully separate.
 brew bundle --file Brewfile
 make setup
 make dev
+```
+
+## ATS compatibility checks
+
+You can validate both generated resumes and cover letters with automated tests and a local PDF checker.
+
+Run ATS integration tests:
+
+```bash
+go test ./tests/integration -run ATS -count=1
+```
+
+Or use the Make target:
+
+```bash
+make test-ats
+```
+
+Run the local checker against a real exported PDF:
+
+```bash
+go run ./cmd/atscheck --pdf "/path/to/generated.pdf"
+```
+
+Add expected content and reading-order checks:
+
+```bash
+go run ./cmd/atscheck \
+  --pdf "/path/to/generated.pdf" \
+  --require "Jane Smith" \
+  --require "Acme Robotics" \
+  --order "Jane Smith>Experience>Acme Robotics"
+```
+
+Shortcut Make targets:
+
+```bash
+make atscheck PDF="/path/to/generated.pdf"
+make atscheck-resume PDF="/path/to/resume.pdf"
+make atscheck-cover-letter PDF="/path/to/cover-letter.pdf"
+```
+
+You can append extra checks to Make targets with `ATS_ARGS`, for example:
+
+```bash
+make atscheck-resume PDF="/path/to/resume.pdf" ATS_ARGS='--require "Acme Robotics" --order "Summary>Experience"'
 ```
 
 ## Release and Homebrew maintenance

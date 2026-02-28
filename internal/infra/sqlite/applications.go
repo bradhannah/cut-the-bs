@@ -14,7 +14,9 @@ import (
 // date_applied descending (most recent first).
 func (s *Store) ListApplications(ctx context.Context) ([]domain.JobApplication, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, company_name, position_title, COALESCE(job_posting_url, ''), date_applied,
+		`SELECT id, company_name, position_title,
+		        COALESCE(job_posting_url, ''), COALESCE(application_url, ''), COALESCE(research_url, ''),
+		        date_applied,
 		        status, COALESCE(fit_indicator, ''),
 		        resume_export_id, cover_letter_template_id, cover_letter_latest_export_id,
 		        COALESCE(notes, ''),
@@ -44,7 +46,9 @@ func (s *Store) ListApplications(ctx context.Context) ([]domain.JobApplication, 
 func (s *Store) SearchApplications(ctx context.Context, query string) ([]domain.JobApplication, error) {
 	like := "%" + query + "%"
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, company_name, position_title, COALESCE(job_posting_url, ''), date_applied,
+		`SELECT id, company_name, position_title,
+		        COALESCE(job_posting_url, ''), COALESCE(application_url, ''), COALESCE(research_url, ''),
+		        date_applied,
 		        status, COALESCE(fit_indicator, ''),
 		        resume_export_id, cover_letter_template_id, cover_letter_latest_export_id,
 		        COALESCE(notes, ''),
@@ -87,14 +91,18 @@ func (s *Store) getApplication(ctx context.Context, id int64) (domain.JobApplica
 	var coverLetterLatestExportID sql.NullInt64
 
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, company_name, position_title, COALESCE(job_posting_url, ''), date_applied,
+		`SELECT id, company_name, position_title,
+		        COALESCE(job_posting_url, ''), COALESCE(application_url, ''), COALESCE(research_url, ''),
+		        date_applied,
 		        status, fit_indicator,
 		        resume_export_id, cover_letter_template_id, cover_letter_latest_export_id,
 		        notes,
 		        created_at, updated_at
 		 FROM job_application WHERE id = ?`, id,
 	).Scan(
-		&app.ID, &app.CompanyName, &app.PositionTitle, &app.JobPostingURL, &app.DateApplied,
+		&app.ID, &app.CompanyName, &app.PositionTitle,
+		&app.JobPostingURL, &app.ApplicationURL, &app.ResearchURL,
+		&app.DateApplied,
 		&app.Status, &fitIndicator,
 		&resumeExportID, &coverLetterTemplateID, &coverLetterLatestExportID,
 		&notes,
@@ -130,10 +138,13 @@ func (s *Store) getApplication(ctx context.Context, id int64) (domain.JobApplica
 func (s *Store) CreateApplication(ctx context.Context, input domain.ApplicationInput) (domain.JobApplication, error) {
 	result, err := s.db.ExecContext(ctx,
 		`INSERT INTO job_application
-		 (company_name, position_title, job_posting_url, date_applied, status,
+		 (company_name, position_title, job_posting_url, application_url, research_url,
+		  date_applied, status,
 		  fit_indicator, resume_export_id, cover_letter_template_id, cover_letter_latest_export_id, notes)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		input.CompanyName, input.PositionTitle, input.JobPostingURL, input.DateApplied,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		input.CompanyName, input.PositionTitle,
+		input.JobPostingURL, input.ApplicationURL, input.ResearchURL,
+		input.DateApplied,
 		domain.StatusApplied,
 		nullableString(input.FitIndicator),
 		nullableInt64Ptr(input.ResumeExportID),
@@ -157,13 +168,17 @@ func (s *Store) CreateApplication(ctx context.Context, input domain.ApplicationI
 func (s *Store) UpdateApplication(ctx context.Context, id int64, input domain.ApplicationInput) (domain.JobApplication, error) {
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE job_application
-		 SET company_name = ?, position_title = ?, job_posting_url = ?, date_applied = ?,
+		 SET company_name = ?, position_title = ?,
+		     job_posting_url = ?, application_url = ?, research_url = ?,
+		     date_applied = ?,
 		     fit_indicator = ?, resume_export_id = ?,
 		     cover_letter_template_id = ?,
 		     cover_letter_latest_export_id = ?, notes = ?,
 		     updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
 		 WHERE id = ?`,
-		input.CompanyName, input.PositionTitle, input.JobPostingURL, input.DateApplied,
+		input.CompanyName, input.PositionTitle,
+		input.JobPostingURL, input.ApplicationURL, input.ResearchURL,
+		input.DateApplied,
 		nullableString(input.FitIndicator),
 		nullableInt64Ptr(input.ResumeExportID),
 		nullableInt64Ptr(input.CoverLetterTemplateID),
@@ -341,7 +356,9 @@ func scanApplication(row applicationScanner) (domain.JobApplication, error) {
 	var coverLetterLatestExportID sql.NullInt64
 
 	if err := row.Scan(
-		&app.ID, &app.CompanyName, &app.PositionTitle, &app.JobPostingURL, &app.DateApplied,
+		&app.ID, &app.CompanyName, &app.PositionTitle,
+		&app.JobPostingURL, &app.ApplicationURL, &app.ResearchURL,
+		&app.DateApplied,
 		&app.Status, &app.FitIndicator,
 		&resumeExportID, &coverLetterTemplateID, &coverLetterLatestExportID,
 		&app.Notes,

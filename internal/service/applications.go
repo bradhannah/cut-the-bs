@@ -50,6 +50,14 @@ func (s *ApplicationService) SearchApplications(ctx context.Context, query strin
 	return s.store.SearchApplications(ctx, query)
 }
 
+// GetApplication returns a single job application by ID.
+func (s *ApplicationService) GetApplication(ctx context.Context, id int64) (domain.JobApplication, error) {
+	if id <= 0 {
+		return domain.JobApplication{}, fmt.Errorf("invalid application id: %d", id)
+	}
+	return s.store.GetApplication(ctx, id)
+}
+
 // CreateApplication validates the input and creates a new job
 // application.
 func (s *ApplicationService) CreateApplication(ctx context.Context, input domain.ApplicationInput) (domain.JobApplication, error) {

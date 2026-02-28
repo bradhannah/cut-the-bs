@@ -20,18 +20,22 @@ func TestCreateApplication(t *testing.T) {
 	ctx := context.Background()
 
 	app, err := s.CreateApplication(ctx, domain.ApplicationInput{
-		CompanyName:   "Acme Corp",
-		PositionTitle: "Software Engineer",
-		JobPostingURL: "https://example.com/jobs/123",
-		DateApplied:   "2025-01-15",
-		FitIndicator:  domain.FitStrong,
-		Notes:         "Referred by Jane",
+		CompanyName:    "Acme Corp",
+		PositionTitle:  "Software Engineer",
+		JobPostingURL:  "https://example.com/jobs/123",
+		ApplicationURL: "https://careers.example.com/candidate/applications/abc123",
+		ResearchURL:    "https://notion.so/acme-notes",
+		DateApplied:    "2025-01-15",
+		FitIndicator:   domain.FitStrong,
+		Notes:          "Referred by Jane",
 	})
 	require.NoError(t, err)
 	assert.NotZero(t, app.ID)
 	assert.Equal(t, "Acme Corp", app.CompanyName)
 	assert.Equal(t, "Software Engineer", app.PositionTitle)
 	assert.Equal(t, "https://example.com/jobs/123", app.JobPostingURL)
+	assert.Equal(t, "https://careers.example.com/candidate/applications/abc123", app.ApplicationURL)
+	assert.Equal(t, "https://notion.so/acme-notes", app.ResearchURL)
 	assert.Equal(t, "2025-01-15", app.DateApplied)
 	assert.Equal(t, domain.StatusApplied, app.Status)
 	assert.Equal(t, domain.FitStrong, app.FitIndicator)
@@ -123,17 +127,21 @@ func TestUpdateApplication(t *testing.T) {
 	require.NoError(t, err)
 
 	updated, err := s.UpdateApplication(ctx, created.ID, domain.ApplicationInput{
-		CompanyName:   "Acme Corp Inc",
-		PositionTitle: "Senior SWE",
-		JobPostingURL: "https://example.com/jobs/456",
-		DateApplied:   "2025-01-20",
-		FitIndicator:  domain.FitPerfect,
-		Notes:         "Updated notes",
+		CompanyName:    "Acme Corp Inc",
+		PositionTitle:  "Senior SWE",
+		JobPostingURL:  "https://example.com/jobs/456",
+		ApplicationURL: "https://company.example.com/applications/456",
+		ResearchURL:    "https://docs.example.com/research/role-456",
+		DateApplied:    "2025-01-20",
+		FitIndicator:   domain.FitPerfect,
+		Notes:          "Updated notes",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "Acme Corp Inc", updated.CompanyName)
 	assert.Equal(t, "Senior SWE", updated.PositionTitle)
 	assert.Equal(t, "https://example.com/jobs/456", updated.JobPostingURL)
+	assert.Equal(t, "https://company.example.com/applications/456", updated.ApplicationURL)
+	assert.Equal(t, "https://docs.example.com/research/role-456", updated.ResearchURL)
 	assert.Equal(t, "2025-01-20", updated.DateApplied)
 	assert.Equal(t, domain.FitPerfect, updated.FitIndicator)
 	assert.Equal(t, "Updated notes", updated.Notes)

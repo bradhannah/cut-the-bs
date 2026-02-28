@@ -1214,6 +1214,37 @@ func TestRenderer_RenderCoverLetter_TemplateDriven_AllElements(t *testing.T) {
 	assert.Greater(t, info2.Size(), int64(0))
 }
 
+func TestBuildParagraphText_PreservesStaticSegmentEdges(t *testing.T) {
+	cfg := ParagraphConfig{
+		Segments: []ParagraphSegmentConfig{
+			{Type: "static", Text: "  "},
+			{Type: "application", Token: "company_name"},
+			{Type: "static", Text: "  "},
+		},
+	}
+
+	got := buildParagraphText(cfg, map[string]string{"company_name": "Acme"})
+	assert.Equal(t, "  Acme  ", got)
+}
+
+func TestBuildParagraphText_PreservesVariableSegmentEdges(t *testing.T) {
+	cfg := ParagraphConfig{
+		Segments: []ParagraphSegmentConfig{
+			{Type: "static", Text: "Start:"},
+			{Type: "adhoc", Key: "why_fit"},
+			{Type: "static", Text: ":End"},
+		},
+	}
+
+	got := buildParagraphText(cfg, map[string]string{"why_fit": "  spaced answer  "})
+	assert.Equal(t, "Start:  spaced answer  :End", got)
+}
+
+func TestSplitLineTokensPreserveSpaces(t *testing.T) {
+	got := splitLineTokensPreserveSpaces("  hello  world ")
+	assert.Equal(t, []string{"  ", "hello", "  ", "world", " "}, got)
+}
+
 // mustJSONTest is a test helper that marshals v to JSON string.
 func mustJSONTest(v any) string {
 	b, err := json.Marshal(v)

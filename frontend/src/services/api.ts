@@ -313,9 +313,10 @@ export async function updateSkill(
   return result;
 }
 
-export async function deleteSkill(id: number): Promise<void> {
+export async function deleteSkill(id: number, skillName?: string): Promise<void> {
   await call<void>("DeleteSkill", id);
-  addToast("success", "Skill deleted");
+  const label = skillName?.trim();
+  addToast("success", label ? `Deleted skill: ${label}` : "Skill deleted");
 }
 
 export async function checkSkillLensReferences(id: number): Promise<string[]> {
@@ -725,6 +726,8 @@ export interface ApplicationInput {
   company_name: string;
   position_title: string;
   job_posting_url: string;
+  application_url: string;
+  research_url: string;
   date_applied: string;
   fit_indicator: string;
   resume_export_id: number | null;
@@ -738,6 +741,8 @@ export interface JobApplication {
   company_name: string;
   position_title: string;
   job_posting_url: string;
+  application_url: string;
+  research_url: string;
   date_applied: string;
   status: string;
   fit_indicator: string;
@@ -820,6 +825,12 @@ export async function getApplicationHistory(
 export async function deleteApplication(id: number): Promise<void> {
   await call<void>("DeleteApplication", id);
   addToast("success", "Application deleted");
+}
+
+export async function prepareApplicationUploadFolder(
+  applicationID: number
+): Promise<string> {
+  return call<string>("PrepareApplicationUploadFolder", applicationID);
 }
 
 export async function getApplicationStatuses(): Promise<string[]> {

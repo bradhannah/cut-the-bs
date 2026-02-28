@@ -756,12 +756,15 @@ func (s *Store) importApplication(ctx context.Context, tx *sql.Tx, app domain.Jo
 	}
 	_, err := tx.ExecContext(ctx,
 		`INSERT INTO job_application
-		 (id, company_name, position_title, job_posting_url, date_applied, status,
+		 (id, company_name, position_title, job_posting_url, application_url, research_url,
+		  date_applied, status,
 		  fit_indicator, resume_export_id, cover_letter_template_id,
 		  cover_letter_latest_export_id, notes,
 		  created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		app.ID, app.CompanyName, app.PositionTitle, app.JobPostingURL, app.DateApplied,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		app.ID, app.CompanyName, app.PositionTitle,
+		app.JobPostingURL, app.ApplicationURL, app.ResearchURL,
+		app.DateApplied,
 		app.Status, fitIndicator, app.ResumeExportID,
 		app.CoverLetterTemplateID, app.CoverLetterLatestExportID,
 		app.Notes, app.CreatedAt, app.UpdatedAt,

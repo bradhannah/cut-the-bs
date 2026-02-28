@@ -1,7 +1,7 @@
 # Cut the BS Makefile
 # Build automation for Go + Wails v2 + Svelte + Bun development workflow
 
-.PHONY: help dev build build-debug release-macos clean test test-race test-verbose vet lint lint-go lint-frontend fmt fmt-go fmt-frontend fmt-check fmt-frontend-check frontend-build frontend-check frontend-install install setup doctor ci kill-dev
+.PHONY: help dev build build-debug release-macos clean test test-race test-verbose test-ats vet lint lint-go lint-frontend fmt fmt-go fmt-frontend fmt-check fmt-frontend-check frontend-build frontend-check frontend-install install setup doctor ci kill-dev atscheck atscheck-resume atscheck-cover-letter
 
 # Bun binary - check common locations
 BUN := $(shell command -v bun 2>/dev/null || echo ~/.bun/bin/bun)
@@ -31,6 +31,7 @@ help: ## Show this help message
 	@echo "  make test         Run all Go tests"
 	@echo "  make test-race    Run Go tests with race detector"
 	@echo "  make test-verbose Run Go tests with verbose output"
+	@echo "  make test-ats     Run ATS-focused integration tests"
 	@echo ""
 	@echo "Quality:"
 	@echo "  make lint         Run all linters (Go + frontend)"
@@ -51,6 +52,9 @@ help: ## Show this help message
 	@echo "  make doctor       Run wails doctor to check dependencies"
 	@echo "  make install      Install Go + frontend dependencies"
 	@echo "  make kill-dev     Terminate stray dev processes"
+	@echo "  make atscheck PDF=/path/file.pdf           Run ATS checker"
+	@echo "  make atscheck-resume PDF=/path/file.pdf    Resume ATS preset"
+	@echo "  make atscheck-cover-letter PDF=/path/file.pdf Cover letter ATS preset"
 
 # ============================================================
 # Setup & Installation
@@ -148,6 +152,10 @@ test-race: ## Run Go tests with race detector
 test-verbose: ## Run Go tests with verbose output
 	@echo "Running Go tests (verbose)..."
 	@go test -v -count=1 ./...
+
+test-ats: ## Run ATS-focused integration tests
+	@echo "Running ATS integration tests..."
+	@go test ./tests/integration -run ATS -count=1
 
 # ============================================================
 # Quality - Linting
@@ -248,6 +256,37 @@ ci: ## Run the full CI pipeline locally (mirrors GitHub Actions)
 
 doctor: ## Run wails doctor to check system dependencies
 	@$(WAILS) doctor
+
+atscheck: ## Run ATS checker against one PDF (set PDF=/path/file.pdf)
+	@if [ -z "$(PDF)" ]; then \
+		echo "ERROR: PDF is required. Usage: make atscheck PDF=\"/path/to/generated.pdf\""; \
+		exit 1; \
+	fi
+	@go run ./cmd/atscheck --pdf "$(PDF)" $(ATS_ARGS)
+
+atscheck-resume: ## Resume ATS preset (set PDF=/path/file.pdf)
+	@if [ -z "$(PDF)" ]; then \
+		echo "ERROR: PDF is required. Usage: make atscheck-resume PDF=\"/path/to/resume.pdf\""; \
+		exit 1; \
+	fi
+	@go run ./cmd/atscheck \
+		--pdf "$(PDF)" \
+		--require "Experience" \
+		--require "Skills" \
+		--order "Experience>Skills" \
+		$(ATS_ARGS)
+
+atscheck-cover-letter: ## Cover-letter ATS preset (set PDF=/path/file.pdf)
+	@if [ -z "$(PDF)" ]; then \
+		echo "ERROR: PDF is required. Usage: make atscheck-cover-letter PDF=\"/path/to/cover-letter.pdf\""; \
+		exit 1; \
+	fi
+	@go run ./cmd/atscheck \
+		--pdf "$(PDF)" \
+		--require "Dear" \
+		--require "Sincerely" \
+		--order "Dear>Sincerely" \
+		$(ATS_ARGS)
 
 kill-dev: ## Terminate stray development processes
 	@echo "Terminating stray development processes..."

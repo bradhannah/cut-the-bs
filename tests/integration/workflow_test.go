@@ -414,7 +414,7 @@ func TestWorkflow_JSONExportImportRoundtrip(t *testing.T) {
 	var exported domain.ExportData
 	require.NoError(t, json.Unmarshal(jsonData, &exported))
 
-	assert.Equal(t, 11, exported.SchemaVersion)
+	assert.Equal(t, service.SchemaVersion, exported.SchemaVersion)
 	assert.NotEmpty(t, exported.ExportedAt)
 	assert.Equal(t, "Jane Smith", exported.Profile.FullName)
 	assert.Len(t, exported.ProfileLinks, 1)

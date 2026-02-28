@@ -6,6 +6,8 @@
     createDocumentTemplate,
     deleteDocumentTemplate,
     duplicateDocumentTemplate,
+    previewTemplate,
+    openFile,
     addToast,
     type DocumentTemplate,
     type DocumentTemplateInput,
@@ -29,6 +31,7 @@
 
   let showDeleteDialog = false;
   let deletingTemplate: DocumentTemplate | null = null;
+  let previewingTemplateID: number | null = null;
 
   $: resumeTemplates = templates.filter((t) => t.template_type === "resume");
   $: coverLetterTemplates = templates.filter(
@@ -58,6 +61,22 @@
       return;
     }
     push(`/templates/${tmpl.id}/builder`);
+  }
+
+  async function handlePreview(tmpl: DocumentTemplate): Promise<void> {
+    if (previewingTemplateID !== null) {
+      return;
+    }
+
+    previewingTemplateID = tmpl.id;
+    try {
+      const pdfPath = await previewTemplate(tmpl.id);
+      await openFile(pdfPath);
+    } catch (e: any) {
+      addToast("error", e?.message || "Preview failed");
+    } finally {
+      previewingTemplateID = null;
+    }
   }
 
   function openCreateDialog(): void {
@@ -245,6 +264,13 @@
                   </td>
                   <td>
                     <div class="row-actions">
+                      <button
+                        class="btn btn-small btn-ghost"
+                        on:click={() => handlePreview(tmpl)}
+                        disabled={previewingTemplateID !== null}
+                      >
+                        {previewingTemplateID === tmpl.id ? "Previewing..." : "Preview"}
+                      </button>
                       <button class="btn btn-small btn-primary" on:click={() => openTemplateBuilder(tmpl)}>
                         {tmpl.is_builtin ? "View" : "Edit"}
                       </button>
@@ -307,6 +333,13 @@
                   </td>
                   <td>
                     <div class="row-actions">
+                      <button
+                        class="btn btn-small btn-ghost"
+                        on:click={() => handlePreview(tmpl)}
+                        disabled={previewingTemplateID !== null}
+                      >
+                        {previewingTemplateID === tmpl.id ? "Previewing..." : "Preview"}
+                      </button>
                       <button class="btn btn-small btn-primary" on:click={() => openTemplateBuilder(tmpl)}>
                         {tmpl.is_builtin ? "View" : "Edit"}
                       </button>
@@ -529,29 +562,29 @@
 
   .template-table {
     width: 100%;
-    min-width: 880px;
+    min-width: 1020px;
     border-collapse: collapse;
     table-layout: fixed;
   }
 
   .template-table .col-name {
-    width: 26%;
+    width: 18%;
   }
 
   .template-table .col-description {
-    width: 34%;
+    width: 31%;
   }
 
   .template-table .col-updated {
-    width: 15%;
+    width: 13%;
   }
 
   .template-table .col-access {
-    width: 12%;
+    width: 14%;
   }
 
   .template-table .col-actions {
-    width: 13%;
+    width: 24%;
   }
 
   .template-table th {
@@ -624,8 +657,14 @@
 
   .row-actions {
     display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
+    gap: 7px;
+    flex-wrap: nowrap;
+    align-items: center;
+    white-space: nowrap;
+  }
+
+  .row-actions .btn {
+    flex: 0 0 auto;
   }
 
   .btn {
@@ -639,6 +678,11 @@
     cursor: pointer;
     text-decoration: none;
     transition: background-color 0.15s, color 0.15s;
+  }
+
+  .btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
   }
 
   .btn-primary {
@@ -656,8 +700,8 @@
   }
 
   .btn-small {
-    padding: 4px 10px;
-    font-size: 0.78rem;
+    padding: 4px 8px;
+    font-size: 0.75rem;
   }
 
   .btn-ghost {

@@ -109,17 +109,15 @@
 
 <style>
   .zoom-widget {
-    position: fixed;
-    bottom: 28px;
-    left: 8px;
-    display: flex;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 34px 1fr 34px;
     align-items: center;
-    gap: 2px;
-    z-index: 900;
-    background-color: #1a2332;
+    gap: 0;
+    background-color: #111a26;
     border: 1px solid #2a3a4a;
-    border-radius: 4px;
-    padding: 2px;
+    border-radius: 6px;
+    overflow: hidden;
   }
 
   .zoom-btn {
@@ -127,13 +125,12 @@
     border: none;
     color: #7a8a9a;
     cursor: pointer;
-    font-size: 0.85rem;
-    width: 22px;
-    height: 22px;
+    font-size: 0.92rem;
+    width: 34px;
+    height: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 2px;
     padding: 0;
     line-height: 1;
   }
@@ -153,11 +150,14 @@
     border: none;
     color: #a0b0c0;
     cursor: pointer;
-    font-size: 0.7rem;
-    padding: 2px 4px;
-    min-width: 36px;
+    font-size: 0.74rem;
+    padding: 0 8px;
+    min-width: 48px;
+    min-height: 30px;
     text-align: center;
-    border-radius: 2px;
+    border-left: 1px solid #2a3a4a;
+    border-right: 1px solid #2a3a4a;
+    font-weight: 700;
   }
 
   .zoom-level:hover {

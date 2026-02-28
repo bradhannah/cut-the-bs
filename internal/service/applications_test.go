@@ -238,6 +238,42 @@ func TestApplicationService_SearchApplications_EmptyQueryReturnsList(t *testing.
 }
 
 // =================================================================
+// GetApplication
+// =================================================================
+
+func TestApplicationService_GetApplication_Success(t *testing.T) {
+	store := &mockApplicationStore{
+		application: domain.JobApplication{
+			ID: 77, CompanyName: "Acme Corp", PositionTitle: "Platform Engineer",
+		},
+	}
+	svc := NewApplicationService(store)
+
+	got, err := svc.GetApplication(context.Background(), 77)
+	require.NoError(t, err)
+	assert.Equal(t, int64(77), got.ID)
+	assert.Equal(t, "Acme Corp", got.CompanyName)
+}
+
+func TestApplicationService_GetApplication_InvalidID(t *testing.T) {
+	store := &mockApplicationStore{}
+	svc := NewApplicationService(store)
+
+	_, err := svc.GetApplication(context.Background(), 0)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid application id")
+}
+
+func TestApplicationService_GetApplication_StoreError(t *testing.T) {
+	store := &mockApplicationStore{err: fmt.Errorf("db error")}
+	svc := NewApplicationService(store)
+
+	_, err := svc.GetApplication(context.Background(), 99)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "db error")
+}
+
+// =================================================================
 // CreateApplication — validation
 // =================================================================
 

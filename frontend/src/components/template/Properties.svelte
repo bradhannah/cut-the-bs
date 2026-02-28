@@ -257,10 +257,43 @@
 
     updateConfigField("segments", segments);
   }
+
+  function syncParagraphTextareaHeight(node: HTMLTextAreaElement): void {
+    const currentHeight = node.getBoundingClientRect().height;
+    node.style.height = "auto";
+    const neededHeight = node.scrollHeight;
+    node.style.minHeight = `${neededHeight}px`;
+    node.style.height = `${Math.max(currentHeight, neededHeight)}px`;
+  }
+
+  function autoFitParagraphTextarea(node: HTMLTextAreaElement, content: string) {
+    void content;
+    const onInput = (): void => {
+      syncParagraphTextareaHeight(node);
+    };
+
+    node.addEventListener("input", onInput);
+    requestAnimationFrame(() => {
+      syncParagraphTextareaHeight(node);
+    });
+
+    return {
+      update(nextContent: string): void {
+        void nextContent;
+        requestAnimationFrame(() => {
+          syncParagraphTextareaHeight(node);
+        });
+      },
+      destroy(): void {
+        node.removeEventListener("input", onInput);
+      },
+    };
+  }
 </script>
 
 <div class="properties-root" class:read-only={isReadOnly}>
 {#if $selectedElement}
+  {#key $selectedElement.id}
   <!-- Element Properties -->
   <div class="properties-header">
     <div class="header-left">
@@ -1674,6 +1707,7 @@
                   class="prop-textarea"
                   rows="2"
                   value={segment.text || ""}
+                  use:autoFitParagraphTextarea={segment.text || ""}
                   on:input={(e) =>
                     updateParagraphSegment(
                       index,
@@ -1752,6 +1786,7 @@
                   class="prop-textarea"
                   rows="2"
                   value={segment.help_text || ""}
+                  use:autoFitParagraphTextarea={segment.help_text || ""}
                   on:input={(e) =>
                     updateParagraphSegment(
                       index,
@@ -1961,6 +1996,7 @@
       </div>
     {/if}
   </div>
+  {/key}
 {:else if $currentTemplate}
   <!-- Template-Level Properties (T046) -->
   <div class="properties-header">

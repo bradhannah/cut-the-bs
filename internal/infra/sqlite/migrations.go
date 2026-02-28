@@ -6,7 +6,7 @@ import (
 )
 
 // currentVersion is the latest schema version.
-const currentVersion = 11
+const currentVersion = 12
 
 // Migrate applies all pending schema migrations to the database.
 // It reads PRAGMA user_version to determine the current schema version
@@ -42,6 +42,7 @@ func Migrate(store *Store) error {
 		migrateV9,
 		migrateV10,
 		migrateV11,
+		migrateV12,
 	}
 
 	for i := version; i < currentVersion; i++ {
@@ -1302,5 +1303,37 @@ func migrateV11(store *Store) error {
 	}
 
 	store.logger.Info("migration v11 applied successfully")
+	return nil
+}
+
+// migrateV12 adds separate application and research URL fields to
+// job_application, allowing multiple URL types per application.
+func migrateV12(store *Store) error {
+	tx, err := store.db.Begin()
+	if err != nil {
+		return fmt.Errorf("unable to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	statements := []string{
+		`ALTER TABLE job_application ADD COLUMN application_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE job_application ADD COLUMN research_url TEXT NOT NULL DEFAULT ''`,
+	}
+
+	for _, stmt := range statements {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("executing statement: %w\nSQL: %s", err, stmt)
+		}
+	}
+
+	if _, err := tx.Exec("PRAGMA user_version = 12"); err != nil {
+		return fmt.Errorf("setting user_version: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing migration: %w", err)
+	}
+
+	store.logger.Info("migration v12 applied successfully")
 	return nil
 }

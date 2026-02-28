@@ -336,6 +336,8 @@ type JobApplication struct {
 	CompanyName               string `json:"company_name"`
 	PositionTitle             string `json:"position_title"`
 	JobPostingURL             string `json:"job_posting_url"`
+	ApplicationURL            string `json:"application_url"`
+	ResearchURL               string `json:"research_url"`
 	DateApplied               string `json:"date_applied"`
 	Status                    string `json:"status"`
 	FitIndicator              string `json:"fit_indicator"`
@@ -353,6 +355,8 @@ type ApplicationInput struct {
 	CompanyName               string `json:"company_name"`
 	PositionTitle             string `json:"position_title"`
 	JobPostingURL             string `json:"job_posting_url"`
+	ApplicationURL            string `json:"application_url"`
+	ResearchURL               string `json:"research_url"`
 	DateApplied               string `json:"date_applied"`
 	FitIndicator              string `json:"fit_indicator"`
 	ResumeExportID            *int64 `json:"resume_export_id"`

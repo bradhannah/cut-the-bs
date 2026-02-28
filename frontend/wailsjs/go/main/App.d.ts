@@ -170,6 +170,8 @@ export function OverwriteExport(arg1:number,arg2:domain.ExportRequest):Promise<d
 
 export function ParseTemplateVariables(arg1:number):Promise<domain.TemplateVariables>;
 
+export function PrepareApplicationUploadFolder(arg1:number):Promise<string>;
+
 export function PreviewExport(arg1:domain.ExportRequest):Promise<string>;
 
 export function PreviewTemplate(arg1:number):Promise<string>;

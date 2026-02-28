@@ -338,6 +338,10 @@ export function ParseTemplateVariables(arg1) {
   return window['go']['main']['App']['ParseTemplateVariables'](arg1);
 }
 
+export function PrepareApplicationUploadFolder(arg1) {
+  return window['go']['main']['App']['PrepareApplicationUploadFolder'](arg1);
+}
+
 export function PreviewExport(arg1) {
   return window['go']['main']['App']['PreviewExport'](arg1);
 }

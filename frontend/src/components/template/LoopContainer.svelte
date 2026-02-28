@@ -104,6 +104,12 @@
     dispatch("select", { id: childId });
   }
 
+  function handleChildMouseDown(e: MouseEvent, childId: number): void {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    dispatch("select", { id: childId });
+  }
+
   function handleChildDelete(e: MouseEvent, childId: number): void {
     e.stopPropagation();
     dispatch("delete", { id: childId });
@@ -383,6 +389,8 @@
         <div
           class="child-element"
           class:selected={$selectedElementId === child.id}
+          data-template-element-id={Number(child.id)}
+          on:mousedown={(e) => handleChildMouseDown(e, Number(child.id))}
           on:click={(e) => handleChildClick(e, Number(child.id))}
           role="button"
           tabindex="0"

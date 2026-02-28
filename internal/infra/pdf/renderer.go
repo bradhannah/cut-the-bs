@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	"cut-the-bs/internal/domain"
 
@@ -262,6 +263,96 @@ func renderWrappedText(
 	}
 
 	return y, nil
+}
+
+// renderWrappedTextPreserveWhitespace renders text like renderWrappedText,
+// but preserves leading/trailing spaces for each line instead of trimming
+// them away.
+func renderWrappedTextPreserveWhitespace(
+	pdf *gopdf.GoPdf,
+	text string,
+	x, y, maxWidth, fontSize float64,
+	mBottom, mTop float64,
+) (float64, error) {
+	lineHeight := fontSize + lineSpacing
+
+	normalized := strings.ReplaceAll(text, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	normalized = strings.ReplaceAll(normalized, "\t", " ")
+
+	lines := strings.Split(normalized, "\n")
+
+	for _, line := range lines {
+		if line == "" {
+			y += lineHeight
+			continue
+		}
+
+		tokens := splitLineTokensPreserveSpaces(line)
+		currentLine := ""
+
+		for _, token := range tokens {
+			testLine := currentLine + token
+
+			width, err := pdf.MeasureTextWidth(testLine)
+			if err != nil {
+				return y, fmt.Errorf("measure text: %w", err)
+			}
+
+			if width > maxWidth && currentLine != "" {
+				if err := checkPageBreak(pdf, &y, lineHeight, mBottom, mTop); err != nil {
+					return y, err
+				}
+				pdf.SetX(x)
+				pdf.SetY(y)
+				if err := pdf.Cell(nil, currentLine); err != nil {
+					return y, fmt.Errorf("render text: %w", err)
+				}
+				y += lineHeight
+				currentLine = token
+			} else {
+				currentLine = testLine
+			}
+		}
+
+		if currentLine != "" {
+			if err := checkPageBreak(pdf, &y, lineHeight, mBottom, mTop); err != nil {
+				return y, err
+			}
+			pdf.SetX(x)
+			pdf.SetY(y)
+			if err := pdf.Cell(nil, currentLine); err != nil {
+				return y, fmt.Errorf("render text: %w", err)
+			}
+			y += lineHeight
+		}
+	}
+
+	return y, nil
+}
+
+func splitLineTokensPreserveSpaces(line string) []string {
+	if line == "" {
+		return nil
+	}
+
+	tokens := make([]string, 0)
+	lineRunes := []rune(line)
+	start := 0
+	inSpace := unicode.IsSpace(lineRunes[0])
+
+	for i := 1; i < len(lineRunes); i++ {
+		isSpace := unicode.IsSpace(lineRunes[i])
+		if isSpace == inSpace {
+			continue
+		}
+		tokens = append(tokens, string(lineRunes[start:i]))
+		start = i
+		inSpace = isSpace
+	}
+
+	tokens = append(tokens, string(lineRunes[start:]))
+	return tokens
 }
 
 // renderWrappedTextHanging renders text starting at x+firstLineIndent for

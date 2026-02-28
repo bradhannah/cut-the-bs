@@ -111,6 +111,29 @@
     selectedElementId.set(null);
   }
 
+  function parseElementIDFromTarget(target: EventTarget | null): number | null {
+    if (!(target instanceof Element)) return null;
+    if (target.closest(".delete-btn")) return null;
+
+    const hit = target.closest("[data-template-element-id]");
+    if (!(hit instanceof HTMLElement)) return null;
+
+    const raw = hit.dataset.templateElementId;
+    if (!raw) return null;
+
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isNaN(parsed)) return null;
+
+    return parsed;
+  }
+
+  function handleCanvasElementMouseDown(e: MouseEvent): void {
+    if (e.button !== 0) return;
+    const elementID = parseElementIDFromTarget(e.target);
+    if (elementID === null) return;
+    selectedElementId.set(elementID);
+  }
+
   function getDraggedElementType(e: DragEvent): string {
     const dt = e.dataTransfer;
     if (!dt) return $nativeDraggedElementType || "";
@@ -360,6 +383,7 @@
     on:dragover={handleNativeDragOver}
     on:drop={handleNativeDrop}
     on:dragleave={handleNativeDragLeave}
+    on:mousedown={handleCanvasElementMouseDown}
   >
     {#each dndItems as item, i (item.id)}
       {#if dropIndicatorIndex === i}

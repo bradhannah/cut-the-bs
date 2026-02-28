@@ -45,6 +45,19 @@
     dispatch("select", { id: element.id });
   }
 
+  function handleMouseDown(e: MouseEvent): void {
+    if (e.button !== 0) return;
+
+    const target = e.target;
+    if (target instanceof Element) {
+      if (target.closest(".delete-btn")) return;
+      if (target.closest(".loop-container")) return;
+    }
+
+    e.stopPropagation();
+    dispatch("select", { id: element.id });
+  }
+
   function handleDelete(e: MouseEvent): void {
     if (readOnly) return;
     e.stopPropagation();
@@ -61,11 +74,12 @@
   }
 </script>
 
-<!-- svelte-ignore a11y-click-events-have-key-events -->
 <div
   class="element-block"
   class:selected
   class:is-loop={isLoop}
+  data-template-element-id={element.id}
+  on:mousedown={handleMouseDown}
   on:click={handleClick}
   on:keydown={handleKeydown}
   tabindex="0"

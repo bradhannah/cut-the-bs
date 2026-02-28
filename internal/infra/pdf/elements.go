@@ -351,7 +351,7 @@ func renderStaticTextElement(rc *renderContext, el domain.TemplateElement) error
 	}
 
 	var err error
-	rc.y, err = renderWrappedText(
+	rc.y, err = renderWrappedTextPreserveWhitespace(
 		rc.pdf,
 		text,
 		x,
@@ -1600,7 +1600,7 @@ func renderParagraphElement(rc *renderContext, el domain.TemplateElement) error 
 	}
 
 	var err error
-	rc.y, err = renderWrappedText(
+	rc.y, err = renderWrappedTextPreserveWhitespace(
 		rc.pdf,
 		paragraphText,
 		rc.marginLeft,
@@ -1626,14 +1626,14 @@ func buildParagraphText(cfg ParagraphConfig, subs map[string]string) string {
 	parts := make([]string, 0, len(cfg.Segments))
 	for _, segment := range cfg.Segments {
 		part := resolveParagraphSegment(segment, subs)
-		part = normalizeParagraphSegmentText(part, segment.Type == "static")
+		part = normalizeParagraphSegmentText(part)
 		if part == "" {
 			continue
 		}
 		parts = append(parts, part)
 	}
 
-	return strings.TrimSpace(strings.Join(parts, ""))
+	return strings.Join(parts, "")
 }
 
 func resolveParagraphSegment(segment ParagraphSegmentConfig, subs map[string]string) string {
@@ -1663,19 +1663,15 @@ func substitutionValue(subs map[string]string, key string) string {
 	if key == "" || subs == nil {
 		return ""
 	}
-	return strings.TrimSpace(subs[key])
+	return subs[key]
 }
 
-func normalizeParagraphSegmentText(text string, preserveEdges bool) string {
+func normalizeParagraphSegmentText(text string) string {
 	if text == "" {
 		return ""
 	}
 	replacer := strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ", "\t", " ")
-	cleaned := replacer.Replace(text)
-	if preserveEdges {
-		return cleaned
-	}
-	return strings.TrimSpace(cleaned)
+	return replacer.Replace(text)
 }
 
 // renderDateElement renders the current date on the cover letter.

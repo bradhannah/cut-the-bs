@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import {
     listSkillsByCategory,
     createSkill,
@@ -31,6 +31,7 @@
   let categories: SkillCategory[] = [];
   let competenceLevels: CompetenceLevel[] = [];
   let loading = true;
+  let pageRootEl: HTMLDivElement | null = null;
 
   // Mass edit mode
   let massEditMode = false;
@@ -79,13 +80,16 @@
   // Lens tags state
   let lenses: Lens[] = [];
   let skillLensTagIds: Set<number> = new Set();
+  let lensTagRequestToken = 0;
 
   onMount(async () => {
     await Promise.all([loadData(), loadCompetenceLevels(), loadLenses()]);
   });
 
-  async function loadData(): Promise<void> {
-    loading = true;
+  async function loadData(showLoading = true): Promise<void> {
+    if (showLoading) {
+      loading = true;
+    }
     try {
       const [cats, catList] = await Promise.all([
         listSkillsByCategory(),
@@ -94,7 +98,30 @@
       categoriesWithSkills = cats || [];
       categories = catList || [];
     } finally {
-      loading = false;
+      if (showLoading) {
+        loading = false;
+      }
+    }
+  }
+
+  function getContentScrollContainer(): HTMLElement | null {
+    if (!pageRootEl) {
+      return null;
+    }
+
+    const container = pageRootEl.closest(".content");
+    return container instanceof HTMLElement ? container : null;
+  }
+
+  async function loadDataPreservingScroll(showLoading = false): Promise<void> {
+    const container = getContentScrollContainer();
+    const scrollTop = container ? container.scrollTop : 0;
+
+    await loadData(showLoading);
+    await tick();
+
+    if (container) {
+      container.scrollTop = scrollTop;
     }
   }
 
@@ -117,7 +144,10 @@
   // --- Skill CRUD ---
 
   function openAddSkill(): void {
+    lensTagRequestToken += 1;
     editingSkill = null;
+    deleteConfirmSkill = null;
+    lensReferences = [];
     formName = "";
     formCategoryId = categories.length > 0 ? categories[0].id : 0;
     formCompetenceLevel = 5;
@@ -127,6 +157,9 @@
   }
 
   async function openEditSkill(skill: Skill): Promise<void> {
+    const requestToken = ++lensTagRequestToken;
+    deleteConfirmSkill = null;
+    lensReferences = [];
     editingSkill = skill;
     formName = skill.name;
     formCategoryId = skill.category_id;
@@ -138,17 +171,44 @@
     if (lenses.length > 0) {
       try {
         const tagIds = await getSkillLensTags(skill.id);
+        if (
+          requestToken !== lensTagRequestToken ||
+          !editingSkill ||
+          editingSkill.id !== skill.id
+        ) {
+          return;
+        }
         skillLensTagIds = new Set(tagIds || []);
       } catch {
+        if (
+          requestToken !== lensTagRequestToken ||
+          !editingSkill ||
+          editingSkill.id !== skill.id
+        ) {
+          return;
+        }
         skillLensTagIds = new Set();
       }
     }
   }
 
   function cancelSkillForm(): void {
+    lensTagRequestToken += 1;
     showSkillForm = false;
     editingSkill = null;
+    deleteConfirmSkill = null;
+    lensReferences = [];
     skillLensTagIds = new Set();
+  }
+
+  function findSkillById(skillId: number): Skill | null {
+    for (const group of categoriesWithSkills) {
+      const found = group.skills.find((skill) => skill.id === skillId);
+      if (found) {
+        return found;
+      }
+    }
+    return null;
   }
 
   async function handleSkillSubmit(): Promise<void> {
@@ -181,9 +241,16 @@
         await setSkillLensTags(savedSkill.id, [...skillLensTagIds]);
       }
 
-      showSkillForm = false;
-      editingSkill = null;
-      await loadData();
+      await loadDataPreservingScroll(false);
+
+      const refreshedSkill = findSkillById(savedSkill.id);
+      const formSkill = refreshedSkill ?? savedSkill;
+      editingSkill = formSkill;
+      formName = formSkill.name;
+      formCategoryId = formSkill.category_id;
+      formCompetenceLevel = formSkill.competence_level;
+      formIsLegacy = formSkill.is_legacy;
+      showSkillForm = true;
     } catch {
       // Toast already shown
     }
@@ -200,14 +267,28 @@
 
   async function handleDeleteSkill(): Promise<void> {
     if (!deleteConfirmSkill) return;
+    const deletedSkillId = deleteConfirmSkill.id;
+    const deletedSkillName = deleteConfirmSkill.name;
     try {
-      await deleteSkill(deleteConfirmSkill.id);
+      await deleteSkill(deletedSkillId, deletedSkillName);
       deleteConfirmSkill = null;
       lensReferences = [];
-      await loadData();
+      await loadDataPreservingScroll(false);
+
+      if (editingSkill && editingSkill.id === deletedSkillId) {
+        cancelSkillForm();
+      }
     } catch {
       // Toast already shown
     }
+  }
+
+  async function requestDeleteSkill(skill: Skill): Promise<void> {
+    if (!showSkillForm || !editingSkill || editingSkill.id !== skill.id) {
+      await openEditSkill(skill);
+    }
+
+    await confirmDeleteSkill(skill);
   }
 
   function cancelDelete(): void {
@@ -381,7 +462,7 @@
   }
 </script>
 
-<div class="skills-page">
+<div class="skills-page" bind:this={pageRootEl}>
   <div class="page-header">
     <h2>Skills</h2>
     <div class="header-actions">
@@ -404,269 +485,323 @@
     Manage your skills organized by category with competence levels.
   </p>
 
-  <!-- Skill Form -->
-  {#if showSkillForm}
-    <div class="entry-form">
-      <h3 class="form-title">
-        {editingSkill ? "Edit Skill" : "New Skill"}
-      </h3>
-      <div class="form-row">
-        <div class="form-field">
-          <label class="form-label" for="skill-name">Name</label>
-          <input
-            id="skill-name"
-            type="text"
-            class="form-input"
-            bind:value={formName}
-            placeholder="e.g. TypeScript"
-          />
+  <div class="skills-layout">
+    <div class="skills-main">
+      <!-- Category Management -->
+      <section class="section">
+        <div class="section-header">
+          <h3 class="section-title">Categories</h3>
+          <button class="btn btn-small" on:click={openAddCategory}>
+            + Add Category
+          </button>
         </div>
-        <div class="form-field">
-          <label class="form-label" for="skill-category">Category</label>
-          <select
-            id="skill-category"
-            class="form-input"
-            bind:value={formCategoryId}
-          >
-            {#each sortedCategories as cat (cat.id)}
-              <option value={cat.id}>{cat.name}</option>
-            {/each}
-          </select>
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-field">
-          <label class="form-label" for="skill-competence">
-            Competence Level ({formCompetenceLevel}/10)
-          </label>
-          <input
-            id="skill-competence"
-            type="range"
-            min="1"
-            max="10"
-            class="form-range"
-            bind:value={formCompetenceLevel}
-          />
-          <span class="competence-hint">
-            {competenceLabel(formCompetenceLevel)}
-          </span>
-        </div>
-        <div class="form-field form-field-checkbox">
-          <label class="form-label">
-            <input type="checkbox" bind:checked={formIsLegacy} />
-            Legacy skill (no longer actively used)
-          </label>
-        </div>
-      </div>
-      {#if lenses.length > 0}
-        <fieldset class="form-field lens-tags-field">
-          <legend class="form-label">Lens Tags</legend>
-          <div class="lens-tag-list">
-            {#each lenses as lens (lens.id)}
-              <label class="lens-tag-item">
+
+        {#if showCategoryForm}
+          <div class="entry-form compact">
+            <div class="form-row">
+              <div class="form-field">
+                <label class="form-label" for="cat-name">
+                  {editingCategory ? "Rename Category" : "New Category"}
+                </label>
                 <input
-                  type="checkbox"
-                  checked={skillLensTagIds.has(lens.id)}
-                  on:change={() => toggleLensTag(lens.id)}
+                  id="cat-name"
+                  type="text"
+                  class="form-input"
+                  bind:value={categoryName}
+                  placeholder="e.g. Programming Languages"
                 />
-                <span class="lens-tag-label">{lens.name}</span>
-              </label>
-            {/each}
-          </div>
-        </fieldset>
-      {/if}
-      <div class="form-actions">
-        <button class="btn btn-primary" on:click={handleSkillSubmit}>
-          {editingSkill ? "Update" : "Create"}
-        </button>
-        <button class="btn btn-cancel" on:click={cancelSkillForm}>
-          Cancel
-        </button>
-      </div>
-    </div>
-  {/if}
-
-  <!-- Delete Confirmation -->
-  {#if deleteConfirmSkill}
-    <div class="confirm-dialog">
-      <p>
-        Delete skill <strong>{deleteConfirmSkill.name}</strong>?
-      </p>
-      {#if lensReferences.length > 0}
-        <p class="warn-text">
-          This skill is referenced by {lensReferences.length} lens{lensReferences.length !==
-          1
-            ? "es"
-            : ""}:
-          {lensReferences.join(", ")}
-        </p>
-      {/if}
-      <div class="form-actions">
-        <button class="btn btn-danger-solid" on:click={handleDeleteSkill}>
-          Delete
-        </button>
-        <button class="btn btn-cancel" on:click={cancelDelete}>Cancel</button>
-      </div>
-    </div>
-  {/if}
-
-  <!-- Category Management -->
-  <section class="section">
-    <div class="section-header">
-      <h3 class="section-title">Categories</h3>
-      <button class="btn btn-small" on:click={openAddCategory}>
-        + Add Category
-      </button>
-    </div>
-
-    {#if showCategoryForm}
-      <div class="entry-form compact">
-        <div class="form-row">
-          <div class="form-field">
-            <label class="form-label" for="cat-name">
-              {editingCategory ? "Rename Category" : "New Category"}
-            </label>
-            <input
-              id="cat-name"
-              type="text"
-              class="form-input"
-              bind:value={categoryName}
-              placeholder="e.g. Programming Languages"
-            />
-          </div>
-        </div>
-        <div class="form-actions">
-          <button class="btn btn-primary" on:click={handleCategorySubmit}>
-            {editingCategory ? "Rename" : "Create"}
-          </button>
-          <button class="btn btn-cancel" on:click={cancelCategoryForm}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    {/if}
-
-    {#if sortedCategories.length > 0}
-      <div class="category-list">
-        <DragHandle
-          items={sortedCategories}
-          on:reorder={(e) => handleCategoryReorder(e.detail.orderedIDs)}
-          let:item
-        >
-          {@const cat = getCategory(item.id)}
-          <div class="category-chip">
-            <span class="category-name">{cat.name}</span>
-            <div class="category-actions">
-              <button
-                class="btn btn-small btn-ghost"
-                on:click={() => openEditCategory(cat)}
-              >
-                Rename
+              </div>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" on:click={handleCategorySubmit}>
+                {editingCategory ? "Rename" : "Create"}
               </button>
-              <button
-                class="btn btn-small btn-danger"
-                on:click={() => handleDeleteCategory(cat.id)}
-              >
-                Delete
+              <button class="btn btn-cancel" on:click={cancelCategoryForm}>
+                Cancel
               </button>
             </div>
           </div>
-        </DragHandle>
-      </div>
-    {/if}
-  </section>
+        {/if}
 
-  <!-- Skills by Category -->
-  {#if loading}
-    <LoadingSpinner />
-  {:else if categoriesWithSkills.length === 0}
-    <div class="empty-state">
-      <p>No skills yet.</p>
-      <p class="empty-hint">Create a category first, then add skills to it.</p>
-    </div>
-  {:else}
-    {#each categoriesWithSkills as group (group.category.id)}
-      <section class="section">
-        <button
-          class="section-title-toggle"
-          on:click={() => toggleCategory(group.category.id)}
-        >
-          <span
-            class="chevron"
-            class:collapsed={collapsedCategories.has(group.category.id)}
-          >&#9660;</span>
-          <h3 class="section-title">{group.category.name}</h3>
-          <span class="skill-count-badge">{group.skills.length}</span>
-        </button>
-        {#if !collapsedCategories.has(group.category.id)}
-          {#if group.skills.length === 0}
-            <p class="empty-hint">No skills in this category.</p>
-          {:else}
-          <div class="skill-grid">
-            {#each group.skills as skill (skill.id)}
-              <div class="skill-card" class:legacy={skill.is_legacy}>
-                <div class="skill-info">
-                  <span class="skill-name">{skill.name}</span>
-                  {#if !massEditMode}
-                    <span class="competence-badge level-{skill.competence_level}">
-                      {skill.competence_level}/10
-                    </span>
-                    {#if skill.is_legacy}
-                      <span class="legacy-badge">Legacy</span>
-                    {/if}
-                  {/if}
+        {#if sortedCategories.length > 0}
+          <div class="category-list">
+            <DragHandle
+              items={sortedCategories}
+              on:reorder={(e) => handleCategoryReorder(e.detail.orderedIDs)}
+              let:item
+            >
+              {@const cat = getCategory(item.id)}
+              <div class="category-chip">
+                <span class="category-name">{cat.name}</span>
+                <div class="category-actions">
+                  <button
+                    class="btn btn-small btn-ghost"
+                    on:click={() => openEditCategory(cat)}
+                  >
+                    Rename
+                  </button>
+                  <button
+                    class="btn btn-small btn-danger"
+                    on:click={() => handleDeleteCategory(cat.id)}
+                  >
+                    Delete
+                  </button>
                 </div>
-                {#if massEditMode}
-                  <div class="mass-edit-controls">
-                    <div class="mass-edit-slider">
-                      <input
-                        type="range"
-                        min="1"
-                        max="10"
-                        value={skill.competence_level}
-                        class="form-range"
-                        on:change={(e) =>
-                          handleMassEditCompetence(
-                            skill,
-                            parseInt(e.currentTarget.value)
-                          )}
-                      />
-                      <span class="mass-edit-level">{skill.competence_level}/10</span>
-                    </div>
-                    <label class="mass-edit-legacy">
-                      <input
-                        type="checkbox"
-                        checked={skill.is_legacy}
-                        on:change={(e) =>
-                          handleMassEditLegacy(skill, e.currentTarget.checked)}
-                      />
-                      Legacy
-                    </label>
-                  </div>
-                {:else}
-                  <div class="skill-actions">
-                    <button
-                      class="btn btn-small btn-ghost"
-                      on:click={() => openEditSkill(skill)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      class="btn btn-small btn-danger"
-                      on:click={() => confirmDeleteSkill(skill)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                {/if}
               </div>
-            {/each}
+            </DragHandle>
           </div>
         {/if}
-        {/if}
       </section>
-    {/each}
-  {/if}
+
+      <!-- Skills by Category -->
+      {#if loading}
+        <LoadingSpinner />
+      {:else if categoriesWithSkills.length === 0}
+        <div class="empty-state">
+          <p>No skills yet.</p>
+          <p class="empty-hint">Create a category first, then add skills to it.</p>
+        </div>
+      {:else}
+        {#each categoriesWithSkills as group (group.category.id)}
+          <section class="section">
+            <button
+              class="section-title-toggle"
+              on:click={() => toggleCategory(group.category.id)}
+            >
+              <span
+                class="chevron"
+                class:collapsed={collapsedCategories.has(group.category.id)}
+              >&#9660;</span>
+              <h3 class="section-title">{group.category.name}</h3>
+              <span class="skill-count-badge">{group.skills.length}</span>
+            </button>
+            {#if !collapsedCategories.has(group.category.id)}
+              {#if group.skills.length === 0}
+                <p class="empty-hint">No skills in this category.</p>
+              {:else}
+                <div class="skill-grid">
+                  {#each group.skills as skill (skill.id)}
+                    <div
+                      class="skill-card"
+                      class:legacy={skill.is_legacy}
+                      class:selected={showSkillForm && editingSkill?.id === skill.id}
+                    >
+                      <div class="skill-info">
+                        <span class="skill-name">{skill.name}</span>
+                        {#if !massEditMode}
+                          <span class="competence-badge level-{skill.competence_level}">
+                            {skill.competence_level}/10
+                          </span>
+                          <span class="competence-rating-label">
+                            {competenceLabel(skill.competence_level)}
+                          </span>
+                          {#if skill.is_legacy}
+                            <span class="legacy-badge">Legacy</span>
+                          {/if}
+                        {/if}
+                      </div>
+                      {#if massEditMode}
+                        <div class="mass-edit-controls">
+                          <div class="mass-edit-slider">
+                            <input
+                              type="range"
+                              min="1"
+                              max="10"
+                              value={skill.competence_level}
+                              class="form-range"
+                              on:change={(e) =>
+                                handleMassEditCompetence(
+                                  skill,
+                                  parseInt(e.currentTarget.value)
+                                )}
+                            />
+                            <div class="mass-edit-level-wrap">
+                              <span class="mass-edit-level">{skill.competence_level}/10</span>
+                              <span class="mass-edit-rating">
+                                {competenceLabel(skill.competence_level)}
+                              </span>
+                            </div>
+                          </div>
+                          <label class="mass-edit-legacy">
+                            <input
+                              type="checkbox"
+                              checked={skill.is_legacy}
+                              on:change={(e) =>
+                                handleMassEditLegacy(skill, e.currentTarget.checked)}
+                            />
+                            Legacy
+                          </label>
+                        </div>
+                      {:else}
+                        <div class="skill-actions">
+                          <button
+                            class="btn btn-small btn-ghost"
+                            on:click={() => openEditSkill(skill)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            class="btn btn-small btn-danger"
+                            on:click={() => requestDeleteSkill(skill)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            {/if}
+          </section>
+        {/each}
+      {/if}
+    </div>
+
+    <aside class="skill-details-pane">
+      <div class="skill-details-header">
+        <h3>Skill Details</h3>
+        {#if showSkillForm}
+          <button class="btn btn-small" on:click={openAddSkill}>
+            + New Skill
+          </button>
+        {/if}
+      </div>
+
+      {#if showSkillForm}
+        <div class="entry-form detail-form">
+          <h4 class="form-title">
+            {editingSkill ? `Editing ${editingSkill.name}` : "New Skill"}
+          </h4>
+          <div class="form-row">
+            <div class="form-field">
+              <label class="form-label" for="skill-name">Name</label>
+              <input
+                id="skill-name"
+                type="text"
+                class="form-input"
+                bind:value={formName}
+                placeholder="e.g. TypeScript"
+              />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label class="form-label" for="skill-category">Category</label>
+              <select
+                id="skill-category"
+                class="form-input"
+                bind:value={formCategoryId}
+              >
+                {#each sortedCategories as cat (cat.id)}
+                  <option value={cat.id}>{cat.name}</option>
+                {/each}
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label class="form-label" for="skill-competence">
+                Competence Level ({formCompetenceLevel}/10)
+              </label>
+              <input
+                id="skill-competence"
+                type="range"
+                min="1"
+                max="10"
+                class="form-range"
+                bind:value={formCompetenceLevel}
+              />
+              <span class="competence-hint">
+                {competenceLabel(formCompetenceLevel)}
+              </span>
+            </div>
+          </div>
+
+          <div class="form-row form-row-tight">
+            <div class="form-field form-field-checkbox">
+              <label class="form-label">
+                <input type="checkbox" bind:checked={formIsLegacy} />
+                Legacy skill (no longer actively used)
+              </label>
+            </div>
+          </div>
+
+          {#if lenses.length > 0}
+            <fieldset class="form-field lens-tags-field">
+              <legend class="form-label">Lens Tags</legend>
+              <div class="lens-tag-list">
+                {#each lenses as lens (lens.id)}
+                  <label class="lens-tag-item">
+                    <input
+                      type="checkbox"
+                      checked={skillLensTagIds.has(lens.id)}
+                      on:change={() => toggleLensTag(lens.id)}
+                    />
+                    <span class="lens-tag-label">{lens.name}</span>
+                  </label>
+                {/each}
+              </div>
+            </fieldset>
+          {/if}
+
+          <div class="form-actions detail-form-actions">
+            <button class="btn btn-primary" on:click={handleSkillSubmit}>
+              {editingSkill ? "Save Changes" : "Create Skill"}
+            </button>
+            {#if editingSkill}
+              <button
+                class="btn btn-danger"
+                on:click={() => confirmDeleteSkill(editingSkill)}
+              >
+                Delete
+              </button>
+            {/if}
+            <button class="btn btn-cancel" on:click={cancelSkillForm}>
+              Close
+            </button>
+          </div>
+
+          {#if deleteConfirmSkill && editingSkill && deleteConfirmSkill.id === editingSkill.id}
+            <div class="confirm-dialog detail-delete-confirm">
+              <p>
+                Delete skill <strong>{deleteConfirmSkill.name}</strong>?
+              </p>
+              <p class="confirm-note">
+                This only deletes the selected skill.
+              </p>
+              {#if lensReferences.length > 0}
+                <p class="warn-text">
+                  This skill is referenced by {lensReferences.length} lens{lensReferences.length !==
+                  1
+                    ? "es"
+                    : ""}:
+                  {lensReferences.join(", ")}
+                </p>
+              {/if}
+              <div class="form-actions">
+                <button class="btn btn-danger-solid" on:click={handleDeleteSkill}>
+                  Confirm Delete
+                </button>
+                <button class="btn btn-cancel" on:click={cancelDelete}>Cancel</button>
+              </div>
+            </div>
+          {/if}
+        </div>
+      {:else}
+        <div class="detail-empty">
+          <p class="detail-empty-title">Select a skill to edit it here.</p>
+          <p class="detail-empty-hint">
+            The detail pane stays visible so you can edit without scrolling back
+            up.
+          </p>
+          <button class="btn btn-primary" on:click={openAddSkill}>
+            + Add Skill
+          </button>
+        </div>
+      {/if}
+    </aside>
+  </div>
 
   <!-- Paste Dialog -->
   {#if showPasteDialog}
@@ -751,7 +886,73 @@
 
 <style>
   .skills-page {
-    max-width: 800px;
+    min-width: 0;
+  }
+
+  .skills-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 390px;
+    gap: 20px;
+    align-items: start;
+  }
+
+  .skills-main {
+    min-width: 0;
+  }
+
+  .skill-details-pane {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+
+  .skill-details-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .skill-details-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: #c0d0e0;
+    letter-spacing: 0.01em;
+  }
+
+  .detail-form {
+    margin-bottom: 0;
+  }
+
+  .detail-form-actions {
+    flex-wrap: wrap;
+  }
+
+  .detail-empty {
+    background-color: #1e2d3d;
+    border: 1px solid #3a4a5a;
+    border-radius: 6px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .detail-empty-title {
+    margin: 0;
+    color: #d0dce8;
+    font-size: 0.92rem;
+    font-weight: 600;
+  }
+
+  .detail-empty-hint {
+    margin: 0;
+    color: #7a8a9a;
+    font-size: 0.84rem;
+    line-height: 1.4;
   }
 
   .page-header {
@@ -770,6 +971,8 @@
   .header-actions {
     display: flex;
     gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .page-description {
@@ -876,6 +1079,10 @@
     display: flex;
     gap: 16px;
     margin-bottom: 16px;
+  }
+
+  .form-row-tight {
+    margin-bottom: 8px;
   }
 
   .form-field {
@@ -1063,6 +1270,14 @@
     background-color: #1e2d3d;
     border: 1px solid #2a3a4a;
     border-radius: 4px;
+    transition:
+      border-color 0.14s,
+      box-shadow 0.14s;
+  }
+
+  .skill-card.selected {
+    border-color: #4a8af4;
+    box-shadow: 0 0 0 1px rgba(74, 138, 244, 0.2);
   }
 
   .skill-card.legacy {
@@ -1088,6 +1303,12 @@
     font-weight: 600;
     background-color: #2a3a4a;
     color: #a0b0c0;
+  }
+
+  .competence-rating-label {
+    font-size: 0.76rem;
+    color: #8fa4ba;
+    letter-spacing: 0.01em;
   }
 
   .legacy-badge {
@@ -1128,6 +1349,13 @@
     gap: 8px;
   }
 
+  .mass-edit-level-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 82px;
+  }
+
   .mass-edit-slider .form-range {
     width: 120px;
     accent-color: #4a8af4;
@@ -1138,6 +1366,13 @@
     color: #a0b0c0;
     font-weight: 600;
     min-width: 32px;
+  }
+
+  .mass-edit-rating {
+    font-size: 0.72rem;
+    color: #8fa4ba;
+    line-height: 1.15;
+    white-space: nowrap;
   }
 
   .mass-edit-legacy {
@@ -1159,10 +1394,20 @@
     margin-bottom: 16px;
   }
 
+  .detail-delete-confirm {
+    margin-top: 12px;
+    margin-bottom: 0;
+  }
+
   .confirm-dialog p {
     margin: 0 0 8px;
     color: #e0e0e0;
     font-size: 0.9rem;
+  }
+
+  .confirm-note {
+    color: #9fb2c7 !important;
+    font-size: 0.82rem !important;
   }
 
   .warn-text {
@@ -1260,5 +1505,47 @@
     font-size: 0.85rem;
     color: #c0d0e0;
     user-select: none;
+  }
+
+  @media (max-width: 1120px) {
+    .skills-layout {
+      grid-template-columns: 1fr;
+    }
+
+    .skill-details-pane {
+      position: static;
+      max-height: none;
+      overflow: visible;
+      padding-right: 0;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .page-header {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .header-actions {
+      justify-content: flex-start;
+    }
+
+    .form-row {
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .skill-card {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .skill-actions,
+    .mass-edit-controls {
+      width: 100%;
+      justify-content: flex-start;
+    }
   }
 </style>

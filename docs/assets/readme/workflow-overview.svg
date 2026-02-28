@@ -1,82 +1,96 @@
 <svg width="1280" height="720" viewBox="0 0 1280 720" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
-  <title id="title">cut-the-bs workflow overview</title>
-  <desc id="desc">Five-step visual workflow: profile data, role lens, application tracking, document generation, and export history.</desc>
+  <title id="title">How cut-the-bs works</title>
+  <desc id="desc">Five-step workflow from base data to focused document outputs: capture data, choose a role lens, cut irrelevant content, generate documents, and iterate.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="720" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0F172A"/>
-      <stop offset="1" stop-color="#111827"/>
+      <stop stop-color="#F8FAFC"/>
+      <stop offset="1" stop-color="#E2E8F0"/>
     </linearGradient>
-    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
-      <stop stop-color="#1F2937"/>
-      <stop offset="1" stop-color="#111827"/>
-    </linearGradient>
-    <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
-      <stop stop-color="#22C55E"/>
+    <linearGradient id="rail" x1="94" y1="0" x2="1186" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0EA5E9"/>
       <stop offset="1" stop-color="#14B8A6"/>
     </linearGradient>
+    <filter id="shadow" x="-40%" y="-30%" width="180%" height="190%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0F172A" flood-opacity="0.12"/>
+    </filter>
+    <style>
+      .title { fill:#0F172A; font-family:"Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; font-size:48px; font-weight:700; }
+      .subtitle { fill:#334155; font-family:"Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; font-size:23px; font-weight:500; }
+      .step-title { fill:#0F172A; font-family:"Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; font-size:30px; font-weight:700; }
+      .step-body { fill:#475569; font-family:"Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; font-size:18px; font-weight:500; }
+      .node-text { fill:#0F172A; font-family:"Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; font-size:18px; font-weight:700; text-anchor:middle; dominant-baseline:middle; }
+    </style>
   </defs>
 
   <rect width="1280" height="720" fill="url(#bg)"/>
 
-  <text x="72" y="82" fill="#F9FAFB" font-family="Segoe UI, Inter, sans-serif" font-size="42" font-weight="700">How cut-the-bs works</text>
-  <text x="72" y="122" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="21">A practical loop for tailoring resumes and cover letters per application.</text>
+  <text class="title" x="68" y="86">How cut-the-bs works</text>
+  <text class="subtitle" x="68" y="126">A clear five-step flow to cut the unimportant bullshit and show the real you.</text>
 
-  <line x1="122" y1="386" x2="1158" y2="386" stroke="url(#line)" stroke-width="6" stroke-linecap="round"/>
+  <line x1="94" y1="594" x2="1186" y2="594" stroke="url(#rail)" stroke-width="8" stroke-linecap="round"/>
 
-  <g>
-    <rect x="72" y="214" width="214" height="318" rx="16" fill="url(#card)" stroke="#334155"/>
-    <circle cx="106" cy="248" r="18" fill="#22C55E"/>
-    <text x="99" y="255" fill="#052E16" font-family="Segoe UI, Inter, sans-serif" font-size="16" font-weight="700">1</text>
-    <text x="94" y="292" fill="#F3F4F6" font-family="Segoe UI, Inter, sans-serif" font-size="24" font-weight="700">Capture</text>
-    <text x="94" y="322" fill="#F3F4F6" font-family="Segoe UI, Inter, sans-serif" font-size="24" font-weight="700">your base data</text>
-    <text x="94" y="364" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">Profile, work history,</text>
-    <text x="94" y="390" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">skills, certifications,</text>
-    <text x="94" y="416" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">and reusable summaries.</text>
+  <g filter="url(#shadow)">
+    <rect x="52" y="178" width="220" height="340" rx="18" fill="#FFFFFF" stroke="#CBD5E1"/>
+    <rect x="52" y="178" width="220" height="10" rx="18" fill="#0EA5E9"/>
   </g>
+  <text class="step-title" x="72" y="252">Capture</text>
+  <text class="step-title" x="72" y="288">base data</text>
+  <text class="step-body" x="72" y="342">Keep profile, work history,</text>
+  <text class="step-body" x="72" y="370">wins, and skills in one</text>
+  <text class="step-body" x="72" y="398">reusable source of truth.</text>
+  <line x1="162" y1="518" x2="162" y2="576" stroke="#94A3B8" stroke-width="3"/>
+  <circle cx="162" cy="594" r="18" fill="#FFFFFF" stroke="#0EA5E9" stroke-width="4"/>
+  <text class="node-text" x="162" y="594">1</text>
 
-  <g>
-    <rect x="318" y="174" width="214" height="318" rx="16" fill="url(#card)" stroke="#334155"/>
-    <circle cx="352" cy="208" r="18" fill="#22C55E"/>
-    <text x="345" y="215" fill="#052E16" font-family="Segoe UI, Inter, sans-serif" font-size="16" font-weight="700">2</text>
-    <text x="340" y="252" fill="#F3F4F6" font-family="Segoe UI, Inter, sans-serif" font-size="24" font-weight="700">Create role</text>
-    <text x="340" y="282" fill="#F3F4F6" font-family="Segoe UI, Inter, sans-serif" font-size="24" font-weight="700">focused lenses</text>
-    <text x="340" y="324" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">Save selection presets</text>
-    <text x="340" y="350" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">for leadership,</text>
-    <text x="340" y="376" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">hands-on roles, and</text>
-    <text x="340" y="402" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">domain-specific targets.</text>
+  <g filter="url(#shadow)">
+    <rect x="292" y="178" width="220" height="340" rx="18" fill="#FFFFFF" stroke="#CBD5E1"/>
+    <rect x="292" y="178" width="220" height="10" rx="18" fill="#06B6D4"/>
   </g>
+  <text class="step-title" x="312" y="252">Choose</text>
+  <text class="step-title" x="312" y="288">a role lens</text>
+  <text class="step-body" x="312" y="342">Select what is relevant</text>
+  <text class="step-body" x="312" y="370">for this target role and</text>
+  <text class="step-body" x="312" y="398">de-emphasize the rest.</text>
+  <line x1="402" y1="518" x2="402" y2="576" stroke="#94A3B8" stroke-width="3"/>
+  <circle cx="402" cy="594" r="18" fill="#FFFFFF" stroke="#06B6D4" stroke-width="4"/>
+  <text class="node-text" x="402" y="594">2</text>
 
-  <g>
-    <rect x="564" y="214" width="214" height="318" rx="16" fill="url(#card)" stroke="#334155"/>
-    <circle cx="598" cy="248" r="18" fill="#22C55E"/>
-    <text x="591" y="255" fill="#052E16" font-family="Segoe UI, Inter, sans-serif" font-size="16" font-weight="700">3</text>
-    <text x="586" y="292" fill="#F3F4F6" font-family="Segoe UI, Inter, sans-serif" font-size="24" font-weight="700">Track each</text>
-    <text x="586" y="322" fill="#F3F4F6" font-family="Segoe UI, Inter, sans-serif" font-size="24" font-weight="700">application</text>
-    <text x="586" y="364" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">Store company, role,</text>
-    <text x="586" y="390" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">status, fit signal, and</text>
-    <text x="586" y="416" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">context notes in one view.</text>
+  <g filter="url(#shadow)">
+    <rect x="532" y="178" width="220" height="340" rx="18" fill="#FFFFFF" stroke="#CBD5E1"/>
+    <rect x="532" y="178" width="220" height="10" rx="18" fill="#14B8A6"/>
   </g>
+  <text class="step-title" x="552" y="252">Cut irrelevant</text>
+  <text class="step-title" x="552" y="288">content</text>
+  <text class="step-body" x="552" y="342">Trim generic bullets and</text>
+  <text class="step-body" x="552" y="370">fluff so hiring teams see</text>
+  <text class="step-body" x="552" y="398">your strongest signal fast.</text>
+  <line x1="642" y1="518" x2="642" y2="576" stroke="#94A3B8" stroke-width="3"/>
+  <circle cx="642" cy="594" r="18" fill="#FFFFFF" stroke="#14B8A6" stroke-width="4"/>
+  <text class="node-text" x="642" y="594">3</text>
 
-  <g>
-    <rect x="810" y="174" width="214" height="318" rx="16" fill="url(#card)" stroke="#334155"/>
-    <circle cx="844" cy="208" r="18" fill="#22C55E"/>
-    <text x="837" y="215" fill="#052E16" font-family="Segoe UI, Inter, sans-serif" font-size="16" font-weight="700">4</text>
-    <text x="832" y="252" fill="#F3F4F6" font-family="Segoe UI, Inter, sans-serif" font-size="24" font-weight="700">Generate docs</text>
-    <text x="832" y="282" fill="#F3F4F6" font-family="Segoe UI, Inter, sans-serif" font-size="24" font-weight="700">from the app</text>
-    <text x="832" y="324" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">Resume only, cover</text>
-    <text x="832" y="350" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">letter only, or both.</text>
-    <text x="832" y="376" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">Overwrite latest or</text>
-    <text x="832" y="402" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">create a new version.</text>
+  <g filter="url(#shadow)">
+    <rect x="772" y="178" width="220" height="340" rx="18" fill="#FFFFFF" stroke="#CBD5E1"/>
+    <rect x="772" y="178" width="220" height="10" rx="18" fill="#22C55E"/>
   </g>
+  <text class="step-title" x="792" y="252">Generate</text>
+  <text class="step-title" x="792" y="288">documents</text>
+  <text class="step-body" x="792" y="342">Create resume, cover</text>
+  <text class="step-body" x="792" y="370">letter, or both from the</text>
+  <text class="step-body" x="792" y="398">same focused dataset.</text>
+  <line x1="882" y1="518" x2="882" y2="576" stroke="#94A3B8" stroke-width="3"/>
+  <circle cx="882" cy="594" r="18" fill="#FFFFFF" stroke="#22C55E" stroke-width="4"/>
+  <text class="node-text" x="882" y="594">4</text>
 
-  <g>
-    <rect x="1056" y="214" width="214" height="318" rx="16" fill="url(#card)" stroke="#334155"/>
-    <circle cx="1090" cy="248" r="18" fill="#22C55E"/>
-    <text x="1083" y="255" fill="#052E16" font-family="Segoe UI, Inter, sans-serif" font-size="16" font-weight="700">5</text>
-    <text x="1078" y="292" fill="#F3F4F6" font-family="Segoe UI, Inter, sans-serif" font-size="24" font-weight="700">Review and</text>
-    <text x="1078" y="322" fill="#F3F4F6" font-family="Segoe UI, Inter, sans-serif" font-size="24" font-weight="700">iterate fast</text>
-    <text x="1078" y="364" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">Open exported PDFs,</text>
-    <text x="1078" y="390" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">capture version history,</text>
-    <text x="1078" y="416" fill="#9CA3AF" font-family="Segoe UI, Inter, sans-serif" font-size="17">and adjust for next role.</text>
+  <g filter="url(#shadow)">
+    <rect x="1012" y="178" width="220" height="340" rx="18" fill="#FFFFFF" stroke="#CBD5E1"/>
+    <rect x="1012" y="178" width="220" height="10" rx="18" fill="#F59E0B"/>
   </g>
+  <text class="step-title" x="1032" y="252">Review and</text>
+  <text class="step-title" x="1032" y="288">iterate</text>
+  <text class="step-body" x="1032" y="342">Version outputs, refine</text>
+  <text class="step-body" x="1032" y="370">what worked, and adapt</text>
+  <text class="step-body" x="1032" y="398">quickly for the next role.</text>
+  <line x1="1122" y1="518" x2="1122" y2="576" stroke="#94A3B8" stroke-width="3"/>
+  <circle cx="1122" cy="594" r="18" fill="#FFFFFF" stroke="#F59E0B" stroke-width="4"/>
+  <text class="node-text" x="1122" y="594">5</text>
 </svg>

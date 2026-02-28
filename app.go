@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -910,6 +912,82 @@ func (a *App) SaveApplicationPromptValues(applicationID int64, templateID int64,
 	return err
 }
 
+// PrepareApplicationUploadFolder creates or updates a stable
+// application-specific upload folder containing the linked
+// resume and/or cover letter PDFs with predictable filenames.
+// Returns the absolute folder path.
+func (a *App) PrepareApplicationUploadFolder(applicationID int64) (string, error) {
+	if applicationID <= 0 {
+		return "", fmt.Errorf("invalid application id: %d", applicationID)
+	}
+
+	app, err := a.applicationSvc.GetApplication(a.ctx, applicationID)
+	if err != nil {
+		return "", fmt.Errorf("get application: %w", err)
+	}
+
+	if app.ResumeExportID == nil && app.CoverLetterLatestExportID == nil {
+		return "", fmt.Errorf("application has no linked resume or cover letter exports")
+	}
+
+	exportDir, err := a.cfg.ExportDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve export directory: %w", err)
+	}
+
+	uploadDir := filepath.Join(exportDir, "upload-ready", fmt.Sprintf("application-%d", app.ID))
+	if err := os.MkdirAll(uploadDir, 0o755); err != nil {
+		return "", fmt.Errorf("create upload folder: %w", err)
+	}
+
+	copyCount := 0
+	resumeDestPath := filepath.Join(uploadDir, "resume.pdf")
+	coverDestPath := filepath.Join(uploadDir, "cover-letter.pdf")
+
+	if app.ResumeExportID != nil {
+		resumeExport, err := a.resumeSvc.GetExport(a.ctx, *app.ResumeExportID)
+		if err != nil {
+			return "", fmt.Errorf("load linked resume export: %w", err)
+		}
+		if strings.TrimSpace(resumeExport.FilePath) == "" {
+			return "", fmt.Errorf("linked resume export has no file path")
+		}
+		if err := copyFile(resumeExport.FilePath, resumeDestPath); err != nil {
+			return "", fmt.Errorf("copy resume PDF: %w", err)
+		}
+		copyCount++
+	} else {
+		_ = os.Remove(resumeDestPath)
+	}
+
+	if app.CoverLetterLatestExportID != nil {
+		coverExport, err := a.resumeSvc.GetExport(a.ctx, *app.CoverLetterLatestExportID)
+		if err != nil {
+			return "", fmt.Errorf("load linked cover letter export: %w", err)
+		}
+		if strings.TrimSpace(coverExport.FilePath) == "" {
+			return "", fmt.Errorf("linked cover letter export has no file path")
+		}
+		if err := copyFile(coverExport.FilePath, coverDestPath); err != nil {
+			return "", fmt.Errorf("copy cover letter PDF: %w", err)
+		}
+		copyCount++
+	} else {
+		_ = os.Remove(coverDestPath)
+	}
+
+	if copyCount == 0 {
+		return "", fmt.Errorf("no linked documents were available to copy")
+	}
+
+	absDir, err := filepath.Abs(uploadDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve upload folder: %w", err)
+	}
+
+	return absDir, nil
+}
+
 // =================================================================
 // Lens Bindings
 // =================================================================
@@ -1204,6 +1282,47 @@ func (a *App) OpenFile(filePath string) error {
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("open file: %w", err)
+	}
+
+	return nil
+}
+
+func copyFile(srcPath string, dstPath string) error {
+	absSrc, err := filepath.Abs(srcPath)
+	if err != nil {
+		return fmt.Errorf("resolve source path: %w", err)
+	}
+
+	srcInfo, err := os.Stat(absSrc)
+	if err != nil {
+		return fmt.Errorf("stat source: %w", err)
+	}
+	if !srcInfo.Mode().IsRegular() {
+		return fmt.Errorf("source is not a regular file")
+	}
+
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
+		return fmt.Errorf("create destination directory: %w", err)
+	}
+
+	srcFile, err := os.Open(absSrc)
+	if err != nil {
+		return fmt.Errorf("open source: %w", err)
+	}
+	defer func() { _ = srcFile.Close() }()
+
+	dstFile, err := os.Create(dstPath)
+	if err != nil {
+		return fmt.Errorf("create destination: %w", err)
+	}
+	defer func() { _ = dstFile.Close() }()
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return fmt.Errorf("copy file contents: %w", err)
+	}
+
+	if err := dstFile.Sync(); err != nil {
+		return fmt.Errorf("flush destination: %w", err)
 	}
 
 	return nil

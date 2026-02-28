@@ -222,6 +222,16 @@ func ValidateApplicationInput(input ApplicationInput) error {
 			return fmt.Errorf("invalid job posting url: %w", err)
 		}
 	}
+	if strings.TrimSpace(input.ApplicationURL) != "" {
+		if err := ValidateURL(strings.TrimSpace(input.ApplicationURL)); err != nil {
+			return fmt.Errorf("invalid application url: %w", err)
+		}
+	}
+	if strings.TrimSpace(input.ResearchURL) != "" {
+		if err := ValidateURL(strings.TrimSpace(input.ResearchURL)); err != nil {
+			return fmt.Errorf("invalid research url: %w", err)
+		}
+	}
 	if !ValidFitIndicator(input.FitIndicator) {
 		return fmt.Errorf("invalid fit indicator: %s", input.FitIndicator)
 	}
