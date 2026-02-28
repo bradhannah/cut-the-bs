@@ -240,6 +240,45 @@ func TestImportAllData_RestoresUserTemplates(t *testing.T) {
 	assert.Equal(t, 4, builtinCount, "built-in templates should survive import")
 }
 
+func TestExportImportAllData_PreservesApplicationURLs(t *testing.T) {
+	store := testStore(t)
+	require.NoError(t, Migrate(store))
+	ctx := context.Background()
+
+	_, err := store.CreateApplication(ctx, domain.ApplicationInput{
+		CompanyName:    "Acme Corp",
+		PositionTitle:  "Platform Engineer",
+		JobPostingURL:  "https://jobs.example.com/postings/platform-engineer",
+		ApplicationURL: "https://careers.example.com/candidate/apps/12345",
+		ResearchURL:    "https://docs.example.com/research/acme-platform-engineer",
+		DateApplied:    "2026-02-15",
+		FitIndicator:   domain.FitStrong,
+		Notes:          "Round-trip URL preservation check",
+	})
+	require.NoError(t, err)
+
+	exported, err := store.ExportAllData(ctx)
+	require.NoError(t, err)
+
+	jsonBytes, err := json.Marshal(exported)
+	require.NoError(t, err)
+
+	var restored domain.ExportData
+	require.NoError(t, json.Unmarshal(jsonBytes, &restored))
+
+	store2 := testStore(t)
+	require.NoError(t, Migrate(store2))
+	require.NoError(t, store2.ImportAllData(ctx, restored))
+
+	apps, err := store2.ListApplications(ctx)
+	require.NoError(t, err)
+	require.Len(t, apps, 1)
+
+	assert.Equal(t, "https://jobs.example.com/postings/platform-engineer", apps[0].JobPostingURL)
+	assert.Equal(t, "https://careers.example.com/candidate/apps/12345", apps[0].ApplicationURL)
+	assert.Equal(t, "https://docs.example.com/research/acme-platform-engineer", apps[0].ResearchURL)
+}
+
 func TestImportAllData_OverwritesExistingUserTemplates(t *testing.T) {
 	store := testStore(t)
 	require.NoError(t, Migrate(store))

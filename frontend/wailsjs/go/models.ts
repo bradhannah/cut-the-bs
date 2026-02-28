@@ -76,6 +76,8 @@ export namespace domain {
 	    company_name: string;
 	    position_title: string;
 	    job_posting_url: string;
+	    application_url: string;
+	    research_url: string;
 	    date_applied: string;
 	    fit_indicator: string;
 	    resume_export_id?: number;
@@ -92,6 +94,8 @@ export namespace domain {
 	        this.company_name = source["company_name"];
 	        this.position_title = source["position_title"];
 	        this.job_posting_url = source["job_posting_url"];
+	        this.application_url = source["application_url"];
+	        this.research_url = source["research_url"];
 	        this.date_applied = source["date_applied"];
 	        this.fit_indicator = source["fit_indicator"];
 	        this.resume_export_id = source["resume_export_id"];
@@ -365,6 +369,8 @@ export namespace domain {
 	    company_name: string;
 	    position_title: string;
 	    job_posting_url: string;
+	    application_url: string;
+	    research_url: string;
 	    date_applied: string;
 	    status: string;
 	    fit_indicator: string;
@@ -385,6 +391,8 @@ export namespace domain {
 	        this.company_name = source["company_name"];
 	        this.position_title = source["position_title"];
 	        this.job_posting_url = source["job_posting_url"];
+	        this.application_url = source["application_url"];
+	        this.research_url = source["research_url"];
 	        this.date_applied = source["date_applied"];
 	        this.status = source["status"];
 	        this.fit_indicator = source["fit_indicator"];
