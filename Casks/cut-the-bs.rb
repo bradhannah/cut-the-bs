@@ -1,6 +1,6 @@
 cask "cut-the-bs" do
-  version "0.1.4"
-  sha256 "1652be3c44e86b1ca4868bb32c5fd1fbf02e7cd780ad62441e53803a9d5d31cf"
+  version "0.1.5"
+  sha256 "a1f63c57288b1d6a6fd52c34e52ea0ad995e8d20617431cecf66c15ba1403d4d"
 
   url "https://github.com/bradhannah/cut-the-bs/releases/download/v#{version}/cut-the-bs-macos-universal.tar.gz"
   name "Cut the BS"
