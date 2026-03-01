@@ -4,6 +4,7 @@ package domain
 // is permitted.
 const (
 	StatusApplied             = "Applied"
+	StatusConsidering         = "Considering"
 	StatusAcknowledged        = "Acknowledged"
 	StatusScreening           = "Screening"
 	StatusPhoneScreen         = "Phone Screen"
@@ -16,6 +17,7 @@ const (
 	StatusOfferDeclined       = "Offer Declined"
 	StatusEmployerRejected    = "Employer Rejected"
 	StatusUserWithdrawn       = "User Withdrawn"
+	StatusDecidedNotToPursue  = "Decided not to Pursue"
 	StatusGhosted             = "Ghosted"
 	StatusOnHold              = "On Hold"
 )
@@ -23,6 +25,7 @@ const (
 // AllStatuses is the complete list of valid application status values.
 var AllStatuses = []string{
 	StatusApplied,
+	StatusConsidering,
 	StatusAcknowledged,
 	StatusScreening,
 	StatusPhoneScreen,
@@ -35,6 +38,7 @@ var AllStatuses = []string{
 	StatusOfferDeclined,
 	StatusEmployerRejected,
 	StatusUserWithdrawn,
+	StatusDecidedNotToPursue,
 	StatusGhosted,
 	StatusOnHold,
 }

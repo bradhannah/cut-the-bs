@@ -1245,6 +1245,36 @@ func TestSplitLineTokensPreserveSpaces(t *testing.T) {
 	assert.Equal(t, []string{"  ", "hello", "  ", "world", " "}, got)
 }
 
+func TestWrapLinePreserveWhitespace_DropsLeadingSpaceOnContinuation(t *testing.T) {
+	measure := func(text string) (float64, error) {
+		return float64(len([]rune(text))), nil
+	}
+
+	got, err := wrapLinePreserveWhitespace("you can note it here", 7, measure)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"you can", "note it", "here"}, got)
+}
+
+func TestWrapLinePreserveWhitespace_PreservesExplicitEdges(t *testing.T) {
+	measure := func(text string) (float64, error) {
+		return float64(len([]rune(text))), nil
+	}
+
+	got, err := wrapLinePreserveWhitespace("  hello  world  ", 40, measure)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"  hello  world  "}, got)
+}
+
+func TestWrapLinePreserveWhitespace_WrapKeepsLineEdges(t *testing.T) {
+	measure := func(text string) (float64, error) {
+		return float64(len([]rune(text))), nil
+	}
+
+	got, err := wrapLinePreserveWhitespace("  hello  world  ", 9, measure)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"  hello", "world  "}, got)
+}
+
 // mustJSONTest is a test helper that marshals v to JSON string.
 func mustJSONTest(v any) string {
 	b, err := json.Marshal(v)

@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -36,6 +38,7 @@ type ExportStore interface {
 	CreateExport(ctx context.Context, export domain.ResumeExport) (domain.ResumeExport, error)
 	OverwriteExport(ctx context.Context, exportID int64, export domain.ResumeExport, req domain.ExportRequest) (domain.ResumeExport, error)
 	GetExport(ctx context.Context, id int64) (domain.ResumeExport, error)
+	DeleteExport(ctx context.Context, id int64) error
 	CreateExportSelections(ctx context.Context, exportID int64, req domain.ExportRequest) error
 }
 
@@ -86,6 +89,46 @@ func (s *ResumeService) GetExport(
 	id int64,
 ) (domain.ResumeExport, error) {
 	return s.store.GetExport(ctx, id)
+}
+
+// CleanupOldExports deletes exports older than the most recent
+// keepLatest records and removes their associated PDF files when
+// possible. Returns the number of deleted exports.
+func (s *ResumeService) CleanupOldExports(
+	ctx context.Context,
+	keepLatest int,
+) (int, error) {
+	if keepLatest < 0 {
+		return 0, fmt.Errorf("keepLatest must be >= 0")
+	}
+
+	exports, err := s.store.ListExports(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("list exports: %w", err)
+	}
+
+	if len(exports) <= keepLatest {
+		return 0, nil
+	}
+
+	toDelete := exports[keepLatest:]
+	deleted := 0
+	for _, export := range toDelete {
+		if err := s.store.DeleteExport(ctx, export.ID); err != nil {
+			return deleted, fmt.Errorf("delete export %d: %w", export.ID, err)
+		}
+		deleted++
+
+		path := strings.TrimSpace(export.FilePath)
+		if path == "" {
+			continue
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return deleted, fmt.Errorf("delete export file %q: %w", path, err)
+		}
+	}
+
+	return deleted, nil
 }
 
 // PreviewTemplate generates a preview PDF for a template using all

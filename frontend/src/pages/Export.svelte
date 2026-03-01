@@ -13,6 +13,7 @@
     listCoreExpertise,
     getLensExportSelections,
     createExport,
+    cleanupOldExports,
     openExportFile,
     addToast,
     type DocumentTemplate,
@@ -44,6 +45,10 @@
 
   let loading = true;
   let generating = false;
+  let cleaningOldExports = false;
+  let showCleanupModal = false;
+  let cleanupMode: "keep" | "all" = "keep";
+  let cleanupKeepLatestInput = "5";
   let skillCategoriesExpanded = true;
 
   // --- Selections ---
@@ -330,6 +335,61 @@
     }
   }
 
+  function handleCleanupOldExports(): void {
+    if (exports.length === 0) {
+      addToast("info", "No exports to clean up");
+      return;
+    }
+
+    cleanupMode = "keep";
+    cleanupKeepLatestInput = exports.length >= 5 ? "5" : String(exports.length);
+    showCleanupModal = true;
+  }
+
+  function closeCleanupModal(): void {
+    if (cleaningOldExports) {
+      return;
+    }
+    showCleanupModal = false;
+  }
+
+  async function confirmCleanupOldExports(): Promise<void> {
+    if (!showCleanupModal || cleaningOldExports) {
+      return;
+    }
+
+    const keepLatest =
+      cleanupMode === "all"
+        ? 0
+        : Number.parseInt(cleanupKeepLatestInput, 10);
+
+    if (
+      cleanupMode === "keep" &&
+      (Number.isNaN(keepLatest) || keepLatest < 0)
+    ) {
+      addToast("error", "Enter a whole number greater than or equal to 0");
+      return;
+    }
+
+    const oldCount = Math.max(exports.length - keepLatest, 0);
+    if (oldCount === 0) {
+      addToast("info", "No exports are older than that threshold");
+      showCleanupModal = false;
+      return;
+    }
+
+    cleaningOldExports = true;
+    try {
+      await cleanupOldExports(keepLatest);
+      exports = (await listExports()) || [];
+      showCleanupModal = false;
+    } catch {
+      // Toast already shown
+    } finally {
+      cleaningOldExports = false;
+    }
+  }
+
   function getTemplateName(templateId: string): string {
     // templateId in exports is the template name (string snapshot).
     return templateId;
@@ -338,7 +398,7 @@
 
 <div class="export-page">
   <div class="page-header">
-    <h2>Export Resume</h2>
+    <h2>Ad-Hoc Resume</h2>
     <button
       class="btn btn-primary btn-generate"
       on:click={handleGenerate}
@@ -348,7 +408,7 @@
     </button>
   </div>
   <p class="page-description">
-    Select a template and the content to include, then generate a PDF.
+    Build a one-off resume from selected content and export it as a PDF.
   </p>
 
   {#if loading}
@@ -717,7 +777,16 @@
       </div>
       <!-- Right: Export History -->
       <div class="history-panel">
-        <h3 class="section-title">Export History</h3>
+        <div class="history-header">
+          <h3 class="section-title">Export History</h3>
+          <button
+            class="btn btn-tiny history-cleanup-btn"
+            on:click={handleCleanupOldExports}
+            disabled={cleaningOldExports || exports.length === 0}
+          >
+            {cleaningOldExports ? "Cleaning..." : "Clean Up Old"}
+          </button>
+        </div>
         {#if exports.length === 0}
           <p class="empty-hint">No exports yet.</p>
         {:else}
@@ -742,6 +811,62 @@
     </div>
   {/if}
 </div>
+
+{#if showCleanupModal}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <div class="overlay" on:click|self={closeCleanupModal}>
+    <div class="cleanup-modal">
+      <h3>Clean Up Old Exports</h3>
+      <p class="cleanup-copy">
+        Choose how many of your most recent exports to keep. Older export records and files
+        will be deleted.
+      </p>
+
+      <div class="cleanup-options">
+        <label class="cleanup-option">
+          <input type="radio" bind:group={cleanupMode} value="keep" />
+          Keep latest
+          <input
+            class="form-input cleanup-keep-input"
+            type="number"
+            min="0"
+            step="1"
+            bind:value={cleanupKeepLatestInput}
+            disabled={cleanupMode !== "keep"}
+          />
+          export(s)
+        </label>
+
+        <label class="cleanup-option">
+          <input type="radio" bind:group={cleanupMode} value="all" />
+          Delete all exports
+        </label>
+      </div>
+
+      <p class="cleanup-preview">
+        {#if cleanupMode === "all"}
+          This will delete all {exports.length} export(s).
+        {:else}
+          This will delete {Math.max(exports.length - (Number.parseInt(cleanupKeepLatestInput, 10) || 0), 0)}
+          old export(s).
+        {/if}
+      </p>
+
+      <div class="cleanup-actions">
+        <button class="btn btn-tiny" on:click={closeCleanupModal} disabled={cleaningOldExports}>
+          Cancel
+        </button>
+        <button
+          class="btn btn-primary"
+          on:click={confirmCleanupOldExports}
+          disabled={cleaningOldExports}
+        >
+          {cleaningOldExports ? "Cleaning..." : "Delete Old Exports"}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .export-page {
@@ -873,8 +998,11 @@
     color: #e0e0e0;
     border: 1px solid #2a3a4a;
     border-radius: 4px;
-    padding: 8px 10px;
+    min-height: 44px;
+    height: 44px;
+    padding: 10px 12px;
     font-size: 0.9rem;
+    line-height: 1.2;
   }
 
   .lens-select:focus {
@@ -888,8 +1016,14 @@
     color: #e0e0e0;
     border: 1px solid #2a3a4a;
     border-radius: 4px;
-    padding: 8px 10px;
+    min-height: 44px;
+    padding: 10px 12px;
     font-size: 0.9rem;
+    line-height: 1.2;
+  }
+
+  select.form-input {
+    height: 44px;
   }
 
   /* --- Checkboxes --- */
@@ -1127,6 +1261,90 @@
     background-color: transparent;
     border-color: #3a4a5a;
     color: #7a8a9a;
+  }
+
+  .history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .history-header .section-title {
+    margin-bottom: 0;
+  }
+
+  .history-cleanup-btn {
+    white-space: nowrap;
+  }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.58);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 160;
+    padding: 16px;
+  }
+
+  .cleanup-modal {
+    width: min(520px, 94vw);
+    background: #1e2d3d;
+    border: 1px solid #2a3a4a;
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .cleanup-modal h3 {
+    margin: 0;
+    color: #e0e0e0;
+    font-size: 1rem;
+  }
+
+  .cleanup-copy {
+    margin: 0;
+    color: #8ea0b4;
+    font-size: 0.86rem;
+    line-height: 1.45;
+  }
+
+  .cleanup-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .cleanup-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #c0d0e0;
+    font-size: 0.86rem;
+  }
+
+  .cleanup-keep-input {
+    width: 90px;
+    min-height: 36px;
+    height: 36px;
+    padding: 6px 8px;
+  }
+
+  .cleanup-preview {
+    margin: 0;
+    color: #7a8a9a;
+    font-size: 0.8rem;
+  }
+
+  .cleanup-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
   }
 
   .btn-tiny:hover {

@@ -672,6 +672,19 @@ export async function openExportFile(exportID: number): Promise<void> {
   await call<void>("OpenExportFile", exportID);
 }
 
+export async function cleanupOldExports(keepLatest: number): Promise<number> {
+  const deleted = await call<number>("CleanupOldExports", keepLatest);
+  if (deleted > 0) {
+    addToast(
+      "success",
+      `Deleted ${deleted} old export${deleted === 1 ? "" : "s"}`
+    );
+  } else {
+    addToast("info", "No old exports to delete");
+  }
+  return deleted;
+}
+
 // --- Cover Letter Types ---
 
 export interface CoverLetterInput {

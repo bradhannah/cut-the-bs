@@ -139,6 +139,28 @@ func (s *Store) ListExports(
 	return exports, nil
 }
 
+// DeleteExport deletes a resume export record by ID. Related export
+// selections are cascade deleted, and any application links to the
+// export are set to NULL via foreign key constraints.
+func (s *Store) DeleteExport(
+	ctx context.Context,
+	id int64,
+) error {
+	result, err := s.db.ExecContext(ctx,
+		`DELETE FROM resume_export WHERE id = ?`, id,
+	)
+	if err != nil {
+		return fmt.Errorf("delete export: %w", err)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return fmt.Errorf("export %d not found", id)
+	}
+
+	return nil
+}
+
 // CreateExportSelections saves the content selection snapshot for
 // an export. This records which work history entries, bullets,
 // skills, academics, certifications, and descriptors were included.

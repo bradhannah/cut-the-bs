@@ -775,6 +775,17 @@ func (a *App) OpenExportFile(exportID int64) error {
 	return nil
 }
 
+// CleanupOldExports deletes exports older than the most recent
+// keepLatest records and removes their associated PDF files.
+// Returns the number of deleted exports.
+func (a *App) CleanupOldExports(keepLatest int) (int, error) {
+	deleted, err := a.resumeSvc.CleanupOldExports(a.ctx, keepLatest)
+	if err == nil && deleted > 0 {
+		a.emitAutosave()
+	}
+	return deleted, err
+}
+
 // =================================================================
 // Cover Letter Bindings
 // =================================================================

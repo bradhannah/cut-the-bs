@@ -20,6 +20,8 @@ export function CheckSummaryLensReferences(arg1:number):Promise<Array<string>>;
 
 export function CheckWorkHistoryLensReferences(arg1:number):Promise<Array<string>>;
 
+export function CleanupOldExports(arg1:number):Promise<number>;
+
 export function CreateAcademicCredential(arg1:domain.AcademicInput):Promise<domain.AcademicCredential>;
 
 export function CreateApplication(arg1:domain.ApplicationInput):Promise<domain.JobApplication>;

@@ -98,7 +98,7 @@ dev: ## Start Wails dev mode (Go backend + Svelte frontend with hot reload)
 	@echo "  Backend:  Go with live rebuild"
 	@echo "  Frontend: Vite dev server with HMR"
 	@echo ""
-	@$(WAILS) dev
+	@$(WAILS) dev -forcebuild
 
 # ============================================================
 # Build

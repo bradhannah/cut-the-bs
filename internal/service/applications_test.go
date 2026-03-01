@@ -610,9 +610,9 @@ func TestApplicationService_GetApplicationHistory_StoreError(t *testing.T) {
 func TestApplicationService_GetApplicationStatuses(t *testing.T) {
 	svc := NewApplicationService(nil)
 	statuses := svc.GetApplicationStatuses()
-	assert.Len(t, statuses, 15)
+	assert.Len(t, statuses, 17)
 	assert.Equal(t, domain.StatusApplied, statuses[0])
-	assert.Equal(t, domain.StatusOnHold, statuses[14])
+	assert.Equal(t, domain.StatusOnHold, statuses[16])
 }
 
 func TestApplicationService_GetFitIndicators(t *testing.T) {

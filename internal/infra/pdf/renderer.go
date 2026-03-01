@@ -288,40 +288,18 @@ func renderWrappedTextPreserveWhitespace(
 			continue
 		}
 
-		tokens := splitLineTokensPreserveSpaces(line)
-		currentLine := ""
-
-		for _, token := range tokens {
-			testLine := currentLine + token
-
-			width, err := pdf.MeasureTextWidth(testLine)
-			if err != nil {
-				return y, fmt.Errorf("measure text: %w", err)
-			}
-
-			if width > maxWidth && currentLine != "" {
-				if err := checkPageBreak(pdf, &y, lineHeight, mBottom, mTop); err != nil {
-					return y, err
-				}
-				pdf.SetX(x)
-				pdf.SetY(y)
-				if err := pdf.Cell(nil, currentLine); err != nil {
-					return y, fmt.Errorf("render text: %w", err)
-				}
-				y += lineHeight
-				currentLine = token
-			} else {
-				currentLine = testLine
-			}
+		wrappedLines, err := wrapLinePreserveWhitespace(line, maxWidth, pdf.MeasureTextWidth)
+		if err != nil {
+			return y, err
 		}
 
-		if currentLine != "" {
+		for _, wrappedLine := range wrappedLines {
 			if err := checkPageBreak(pdf, &y, lineHeight, mBottom, mTop); err != nil {
 				return y, err
 			}
 			pdf.SetX(x)
 			pdf.SetY(y)
-			if err := pdf.Cell(nil, currentLine); err != nil {
+			if err := pdf.Cell(nil, wrappedLine); err != nil {
 				return y, fmt.Errorf("render text: %w", err)
 			}
 			y += lineHeight
@@ -329,6 +307,56 @@ func renderWrappedTextPreserveWhitespace(
 	}
 
 	return y, nil
+}
+
+func wrapLinePreserveWhitespace(
+	line string,
+	maxWidth float64,
+	measure func(string) (float64, error),
+) ([]string, error) {
+	if line == "" {
+		return nil, nil
+	}
+
+	tokens := splitLineTokensPreserveSpaces(line)
+	wrapped := make([]string, 0, len(tokens))
+	currentLine := ""
+	pendingSpaces := ""
+
+	for _, token := range tokens {
+		if isWhitespaceToken(token) {
+			if currentLine == "" {
+				currentLine += token
+			} else {
+				pendingSpaces += token
+			}
+			continue
+		}
+
+		testLine := currentLine + pendingSpaces + token
+		width, err := measure(testLine)
+		if err != nil {
+			return nil, fmt.Errorf("measure text: %w", err)
+		}
+
+		if width > maxWidth && currentLine != "" {
+			wrapped = append(wrapped, currentLine)
+			currentLine = token
+		} else {
+			currentLine = testLine
+		}
+		pendingSpaces = ""
+	}
+
+	if pendingSpaces != "" {
+		currentLine += pendingSpaces
+	}
+
+	if currentLine != "" {
+		wrapped = append(wrapped, currentLine)
+	}
+
+	return wrapped, nil
 }
 
 func splitLineTokensPreserveSpaces(line string) []string {
@@ -353,6 +381,20 @@ func splitLineTokensPreserveSpaces(line string) []string {
 
 	tokens = append(tokens, string(lineRunes[start:]))
 	return tokens
+}
+
+func isWhitespaceToken(token string) bool {
+	if token == "" {
+		return false
+	}
+
+	for _, r := range token {
+		if !unicode.IsSpace(r) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // renderWrappedTextHanging renders text starting at x+firstLineIndent for

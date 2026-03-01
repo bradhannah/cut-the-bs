@@ -38,6 +38,10 @@ export function CheckWorkHistoryLensReferences(arg1) {
   return window['go']['main']['App']['CheckWorkHistoryLensReferences'](arg1);
 }
 
+export function CleanupOldExports(arg1) {
+  return window['go']['main']['App']['CleanupOldExports'](arg1);
+}
+
 export function CreateAcademicCredential(arg1) {
   return window['go']['main']['App']['CreateAcademicCredential'](arg1);
 }

@@ -106,12 +106,14 @@
   let loadingPromptFields = false;
   let generatingDocuments = false;
   let preparingUploadFolder = false;
+  let updatingStatusFromView = false;
 
   const inactiveStatuses = new Set([
     "Offer Accepted",
     "Offer Declined",
     "Employer Rejected",
     "User Withdrawn",
+    "Decided not to Pursue",
     "Ghosted",
   ]);
 
@@ -511,6 +513,39 @@
     }
   }
 
+  async function updateStatusFromViewMode(newStatus: string): Promise<void> {
+    if (!editingApp || creating || editorMode !== "view") {
+      return;
+    }
+
+    if (!newStatus || newStatus === editingApp.status) {
+      formStatus = editingApp.status;
+      return;
+    }
+
+    const previousStatus = editingApp.status;
+    updatingStatusFromView = true;
+    try {
+      const updated = await updateApplicationStatus(editingApp.id, newStatus);
+      editingApp = updated;
+      applyAppToForm(updated);
+      applications = applications.map((app) => (app.id === updated.id ? updated : app));
+      await loadHistory();
+    } catch {
+      formStatus = previousStatus;
+    } finally {
+      updatingStatusFromView = false;
+    }
+  }
+
+  function onViewStatusChange(event: Event): void {
+    const target = event.currentTarget as HTMLSelectElement | null;
+    if (!target) {
+      return;
+    }
+    void updateStatusFromViewMode(target.value);
+  }
+
   async function deleteFromEditor(): Promise<void> {
     if (!editingApp) return;
     if (!window.confirm("Delete this application? This cannot be undone.")) {
@@ -647,6 +682,7 @@
   function statusColor(status: string): string {
     const colors: Record<string, string> = {
       Applied: "#4a8af4",
+      Considering: "#6f95cf",
       Acknowledged: "#5a9af4",
       Screening: "#6ab0f4",
       "Phone Screen": "#4ac0a0",
@@ -659,6 +695,7 @@
       "Offer Declined": "#c0a040",
       "Employer Rejected": "#c05050",
       "User Withdrawn": "#a06060",
+      "Decided not to Pursue": "#9b6f7f",
       Ghosted: "#706070",
       "On Hold": "#8080a0",
     };
@@ -1209,7 +1246,26 @@
               </div>
               <div class="viewer-item">
                 <p class="viewer-label">Status</p>
-                <p class="viewer-value">{editingApp.status}</p>
+                <select
+                  id="viewer-status"
+                  class="form-input viewer-status-select"
+                  bind:value={formStatus}
+                  on:change={onViewStatusChange}
+                  disabled={
+                    updatingStatusFromView ||
+                    generatingDocuments ||
+                    preparingUploadFolder ||
+                    saving ||
+                    deleting
+                  }
+                >
+                  {#each statuses as s (s)}
+                    <option value={s}>{s}</option>
+                  {/each}
+                </select>
+                {#if updatingStatusFromView}
+                  <p class="hint viewer-status-hint">Updating status...</p>
+                {/if}
               </div>
               <div class="viewer-item">
                 <p class="viewer-label">Fit</p>
@@ -2239,6 +2295,14 @@
     color: #d8e4f1;
     font-size: 0.9rem;
     line-height: 1.4;
+  }
+
+  .viewer-status-select {
+    margin-top: 6px;
+  }
+
+  .viewer-status-hint {
+    margin-top: 6px;
   }
 
   .viewer-notes h4 {

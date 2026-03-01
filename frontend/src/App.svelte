@@ -55,7 +55,7 @@
     { path: "/summaries", label: "Summaries" },
     { path: "/descriptors", label: "Role Descriptors" },
     { path: "/core-expertise", label: "Core Expertise", dividerAfter: true },
-    { path: "/export", label: "Export" },
+    { path: "/export", label: "Ad-Hoc Resume" },
     { path: "/settings", label: "Settings" },
   ];
 </script>

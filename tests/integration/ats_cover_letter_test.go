@@ -193,6 +193,50 @@ func TestATS_CoverLetter_CustomParagraphTemplate_AllParagraphsPresent(t *testing
 	assert.Empty(t, report.Errors, strings.Join(report.Errors, "\n"))
 }
 
+func TestATS_CoverLetter_StaticTextWrap_NoLeadingSpaceOnContinuation(t *testing.T) {
+	renderer := pdf.NewRenderer()
+	outputDir := t.TempDir()
+
+	// Very narrow usable width to force wrap between "you can" and
+	// "note it here" for regression coverage of continuation spacing.
+	tmpl := domain.TemplateDetail{
+		DocumentTemplate: domain.DocumentTemplate{
+			ID:           7400,
+			Name:         "ATS Static Wrap Spacing",
+			TemplateType: domain.TemplateTypeCoverLetter,
+			MarginTop:    72.0,
+			MarginBottom: 72.0,
+			MarginLeft:   280.0,
+			MarginRight:  280.0,
+		},
+		Elements: []domain.TemplateElement{
+			{ID: 1, TemplateID: 7400, ElementType: domain.ElementStaticText, SortOrder: 0,
+				Config: mustJSONCoverLetterATS(pdf.StaticTextConfig{
+					Text: "you can note it here", FontSize: 10.0,
+					FontStyle: "regular", Alignment: "left",
+				})},
+		},
+	}
+
+	path, err := renderer.RenderCoverLetter(context.Background(), domain.RenderCoverLetterRequest{
+		Template:  &tmpl,
+		OutputDir: outputDir,
+	})
+	require.NoError(t, err)
+
+	report, err := atscheck.AnalyzePDF(path, atscheck.Options{})
+	require.NoError(t, err)
+	assert.Empty(t, report.Errors, strings.Join(report.Errors, "\n"))
+
+	normalized := strings.ReplaceAll(report.Text, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+
+	assert.Contains(t, normalized, "you can\n", "narrow template should wrap after 'you can'")
+	assert.Contains(t, normalized, "\nnote it here", "continuation should start with 'note'")
+	assert.NotContains(t, normalized, "\n note it here",
+		"wrapped continuation should not gain a leading space")
+}
+
 func mustJSONCoverLetterATS(v any) string {
 	b, err := json.Marshal(v)
 	if err != nil {

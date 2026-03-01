@@ -14,6 +14,7 @@
     "Offer Declined",
     "Employer Rejected",
     "User Withdrawn",
+    "Decided not to Pursue",
     "Ghosted",
   ]);
 
@@ -75,7 +76,7 @@
       <a class="action-link action-primary" href="#/applications">Open Applications</a>
       <a class="action-link" href="#/helper">Open Application Helper</a>
       <a class="action-link" href="#/templates">Open Templates</a>
-      <a class="action-link" href="#/export">Open Export</a>
+      <a class="action-link" href="#/export">Open Ad-Hoc Resume</a>
       <a class="action-link" href="#/work-history">Update Profile Data</a>
     </div>
   </section>

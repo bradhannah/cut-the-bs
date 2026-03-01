@@ -230,6 +230,82 @@ func TestListExports_OrderedByIDDesc(t *testing.T) {
 	assert.Equal(t, e1.ID, exports[1].ID)
 }
 
+func TestDeleteExport_RemovesRecordAndSelections(t *testing.T) {
+	store := testStore(t)
+	require.NoError(t, Migrate(store))
+	ctx := context.Background()
+
+	seed := seedExportTestData(t, store, ctx)
+
+	export, err := store.CreateExport(ctx, domain.ResumeExport{
+		TemplateID: "professional",
+		FilePath:   "/tmp/delete-me.pdf",
+	})
+	require.NoError(t, err)
+
+	err = store.CreateExportSelections(ctx, export.ID, domain.ExportRequest{
+		WorkHistoryIDs: []int64{seed.workHistoryIDs[0]},
+		BulletIDs:      []int64{seed.bulletIDs[0]},
+	})
+	require.NoError(t, err)
+
+	err = store.DeleteExport(ctx, export.ID)
+	require.NoError(t, err)
+
+	_, err = store.GetExport(ctx, export.ID)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+
+	workIDs, err := store.GetExportWorkHistoryIDs(ctx, export.ID)
+	require.NoError(t, err)
+	assert.Empty(t, workIDs)
+
+	bulletIDs, err := store.GetExportBulletIDs(ctx, export.ID)
+	require.NoError(t, err)
+	assert.Empty(t, bulletIDs)
+}
+
+func TestDeleteExport_NullsApplicationLinks(t *testing.T) {
+	store := testStore(t)
+	require.NoError(t, Migrate(store))
+	ctx := context.Background()
+
+	export, err := store.CreateExport(ctx, domain.ResumeExport{
+		TemplateID: "professional",
+		FilePath:   "/tmp/linked.pdf",
+	})
+	require.NoError(t, err)
+
+	created, err := store.CreateApplication(ctx, domain.ApplicationInput{
+		CompanyName:               "Acme",
+		PositionTitle:             "Engineer",
+		DateApplied:               "2026-03-01",
+		ResumeExportID:            &export.ID,
+		CoverLetterLatestExportID: &export.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, created.ResumeExportID)
+	require.NotNil(t, created.CoverLetterLatestExportID)
+
+	err = store.DeleteExport(ctx, export.ID)
+	require.NoError(t, err)
+
+	updated, err := store.GetApplication(ctx, created.ID)
+	require.NoError(t, err)
+	assert.Nil(t, updated.ResumeExportID)
+	assert.Nil(t, updated.CoverLetterLatestExportID)
+}
+
+func TestDeleteExport_NotFound(t *testing.T) {
+	store := testStore(t)
+	require.NoError(t, Migrate(store))
+	ctx := context.Background()
+
+	err := store.DeleteExport(ctx, 9999)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
 func TestCreateExportSelections_WorkHistory(t *testing.T) {
 	store := testStore(t)
 	require.NoError(t, Migrate(store))
