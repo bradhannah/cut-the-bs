@@ -1,5 +1,27 @@
 # cut-the-bs
 
+<p align="center">
+  <img src="assets/cut-the-bs.png" alt="Cut the BS app icon" width="180" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/bradhannah/cut-the-bs/releases"><img src="https://img.shields.io/github/v/release/bradhannah/cut-the-bs" alt="Release" /></a>
+  <a href="https://github.com/bradhannah/cut-the-bs/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/bradhannah/cut-the-bs/ci.yml?label=build" alt="Build" /></a>
+  <a href="https://github.com/bradhannah/cut-the-bs/releases"><img src="https://img.shields.io/github/downloads/bradhannah/cut-the-bs/total" alt="Downloads" /></a>
+  <a href="https://github.com/bradhannah/cut-the-bs/stargazers"><img src="https://img.shields.io/github/stars/bradhannah/cut-the-bs" alt="Stars" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" /></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Wails-2.11.0-2F67F6" alt="Wails" />
+  <img src="https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go" alt="Go" />
+  <img src="https://img.shields.io/badge/Svelte-3-orange?logo=svelte" alt="Svelte" />
+  <img src="https://img.shields.io/badge/TypeScript-strict-blue?logo=typescript" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Bun-1.x-black?logo=bun" alt="Bun" />
+  <img src="https://img.shields.io/badge/platform-macOS%20Universal-lightgrey" alt="Platform" />
+  <img src="https://img.shields.io/badge/Homebrew-available-brown?logo=homebrew" alt="Homebrew" />
+</p>
+
 "Cut the Bullsh*t" (`cut-the-bs`) is a desktop app for people who tailor resumes and cover letters often.
 
 It is called that because it helps you cut the unimportant bullshit from your resume and cover letter so hiring teams can see the real you.
