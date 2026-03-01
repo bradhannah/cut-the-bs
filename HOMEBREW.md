@@ -53,14 +53,21 @@ This generates:
 - `dist/cut-the-bs-macos-universal.tar.gz`
 - `dist/cut-the-bs-macos-universal.tar.gz.sha256`
 
-3) Commit release prep (if any)
+3) Update cask version + checksum
+
+- Set `version` in `Casks/cut-the-bs.rb` to the new version (for example `0.1.4`).
+- Set `sha256` in `Casks/cut-the-bs.rb` to the checksum from
+  `dist/cut-the-bs-macos-universal.tar.gz.sha256`.
+- Keep URL format: `.../releases/download/v#{version}/cut-the-bs-macos-universal.tar.gz`.
+
+4) Commit release prep (if any)
 
 ```bash
 git add -A
 git commit -m "chore(release): prepare vX.Y.Z"
 ```
 
-4) Tag and push
+5) Tag and push
 
 ```bash
 git tag vX.Y.Z
@@ -68,12 +75,12 @@ git push origin main
 git push origin vX.Y.Z
 ```
 
-5) Verify GitHub release artifact
+6) Verify GitHub release artifact
 
 - Workflow `.github/workflows/release-macos.yml` runs on `v*` tags.
 - It uploads `cut-the-bs-macos-universal.tar.gz` and checksum file to the release.
 
-6) Smoke test install on another Mac
+7) Smoke test install on another Mac
 
 ```bash
 brew tap bradhannah/cut-the-bs https://github.com/bradhannah/cut-the-bs

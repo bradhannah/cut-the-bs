@@ -1,8 +1,8 @@
 cask "cut-the-bs" do
-  version :latest
-  sha256 :no_check
+  version "0.1.4"
+  sha256 "1652be3c44e86b1ca4868bb32c5fd1fbf02e7cd780ad62441e53803a9d5d31cf"
 
-  url "https://github.com/bradhannah/cut-the-bs/releases/latest/download/cut-the-bs-macos-universal.tar.gz"
+  url "https://github.com/bradhannah/cut-the-bs/releases/download/v#{version}/cut-the-bs-macos-universal.tar.gz"
   name "Cut the BS"
   desc "Desktop app for tailoring resumes and cover letters"
   homepage "https://github.com/bradhannah/cut-the-bs"
